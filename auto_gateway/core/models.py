@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict
 
 
 class ChatMessage(BaseModel):
@@ -11,16 +11,16 @@ class ChatMessage(BaseModel):
     tool_calls: Optional[list[dict[str, Any]]] = None
 
 
-
 class ChatCompletionRequest(BaseModel):
     model: str
     messages: list[ChatMessage]
-    temperature: Optional[float] = 0.0
+    temperature: Optional[float] = None
     stream: bool = False
     tools: Optional[list[dict[str, Any]]] = None
     tool_choice: Optional[Any] = None
-    # openai-compatible extras
-    extra_body: dict[str, Any] = Field(default_factory=dict)
+
+    model_config = ConfigDict(extra="allow")
+
 
 
 class ChatCompletionChoice(BaseModel):

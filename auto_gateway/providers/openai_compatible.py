@@ -45,15 +45,19 @@ class OpenAICompatibleProvider(BaseProvider):
         payload: dict[str, Any] = {
             "model": model,
             "messages": messages,
-            "temperature": self.extra.get("temperature", 0.0),
             "stream": False,
-            "extra_body": {**self.extra.get("extra_body", {}), **(extra_body or {})},
         }
 
         if tools:
             payload["tools"] = tools
         if tool_choice:
             payload["tool_choice"] = tool_choice
+
+        payload.update(self.extra.get("extra_body", {}))
+        if "temperature" in self.extra:
+            payload["temperature"] = self.extra["temperature"]
+        if extra_body:
+            payload.update(extra_body)
 
         async with httpx.AsyncClient(timeout=timeout, headers=headers) as client:
             resp = await client.post(f"{self.base_url}/chat/completions", json=payload)
@@ -84,16 +88,17 @@ class OpenAICompatibleProvider(BaseProvider):
     ) -> AsyncIterator[BaseProviderDelta]:
         """Yield OpenAI-compatible structured delta events from upstream SSE."""
 
-        headers: dict[str, str] = {}
+        headers: dict[str, str] = {
+            "Accept": "text/event-stream",
+            "Cache-Control": "no-cache",
+        }
         if key:
             headers["Authorization"] = f"Bearer {key}"
 
         payload: dict[str, Any] = {
             "model": model,
             "messages": messages,
-            "temperature": self.extra.get("temperature", 0.0),
             "stream": True,
-            "extra_body": {**self.extra.get("extra_body", {}), **(extra_body or {})},
         }
 
         if tools:
@@ -101,13 +106,21 @@ class OpenAICompatibleProvider(BaseProvider):
         if tool_choice:
             payload["tool_choice"] = tool_choice
 
-        async with httpx.AsyncClient(timeout=None, headers=headers) as client:
+        payload.update(self.extra.get("extra_body", {}))
+        if "temperature" in self.extra:
+            payload["temperature"] = self.extra["temperature"]
+        if extra_body:
+            payload.update(extra_body)
+
+        # Enforce proper timeouts to prevent infinite stalling
+        async with httpx.AsyncClient(timeout=timeout, headers=headers) as client:
             async with client.stream(
                 "POST",
                 f"{self.base_url}/chat/completions",
                 json=payload,
                 timeout=timeout,
             ) as resp:
+
                 resp.raise_for_status()
 
                 async for raw_line in resp.aiter_lines():
@@ -134,7 +147,9 @@ class OpenAICompatibleProvider(BaseProvider):
 
                     delta = choices[0].get("delta") or {}
                     content = delta.get("content")
-                    if content:
+                    
+                    # Must use `is not None` to avoid skipping empty string chunks (`""`)
+                    if content is not None:
                         yield {"type": "content", "content": content}
 
                     tool_calls = delta.get("tool_calls")

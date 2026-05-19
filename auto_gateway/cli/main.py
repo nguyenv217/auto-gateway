@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any
+import logging
 
 import typer
 
@@ -15,8 +16,10 @@ from ..providers.google import GoogleProvider
 from ..strategies.adaptive import AdaptiveStrategy
 from ..strategies.sequential import SequentialStrategy
 
-app = typer.Typer(add_completion=False)
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger("auto-gateway")
 
+app = typer.Typer(add_completion=False)
 
 class DummyProvider(BaseProvider):
     """Deterministic provider for tests."""
@@ -88,7 +91,7 @@ def start(
     tunnel: str = typer.Option("none", "--tunnel", help="none|ngrok|cloudflared (public URL optional)"),
 ):
     """Start config-driven gateway."""
-
+    logger.info("Initializing configuration...")
     cfg = load_config(config)
 
     # Allow CLI overrides
@@ -153,3 +156,5 @@ def check(
 def version():
     typer.echo("auto-gateway 0.1.0")
 
+if __name__ == "__main__":
+    app()

@@ -7,12 +7,13 @@ from typing import Any, AsyncIterator, Iterator, Optional
 
 
 import asyncio
+import logging
+
+logger = logging.getLogger("auto-gateway")
 
 from ..providers.base import BaseProvider, ProviderCallResult
 from ..strategies.base import BaseStrategy
 from .router_tool_calls_helpers import chunk_bytes_tool_calls
-
-
 
 @dataclass(frozen=True)
 class RouteRequest:
@@ -52,6 +53,7 @@ class ProviderRouter:
 
             try:
                 t0 = time.perf_counter()
+
                 res = await prov.call(
                     key=key,
                     model=model,
@@ -109,18 +111,6 @@ class ProviderRouter:
             try:
                 t0 = time.perf_counter()
 
-                # initial empty delta (matches OpenAI-ish behavior)
-                yield self._chunk_bytes(
-                    chatcmpl_id=chatcmpl_id,
-                    created=int(time.time()),
-                    model=req.models[0] if req.models else model,
-                    content_delta="",
-                    finish_reason=None,
-                )
-
-                role_emitted = False
-
-
                 stream = prov.call_stream(
                     key=key,
                     model=model,
@@ -138,6 +128,8 @@ class ProviderRouter:
                 if not hasattr(stream, "__aiter__"):
                     raise TypeError("Provider call_stream() must return an async iterator")
 
+                role_emitted = False
+
                 async for ev in stream:
                     if not ev:
                         continue
@@ -145,6 +137,18 @@ class ProviderRouter:
                     ev_type = ev.get("type")
                     if ev_type == "content":
                         content_delta = ev.get("content") or ""
+                        yield self._chunk_bytes(
+                            chatcmpl_id=chatcmpl_id,
+                            created=int(time.time()),
+                            model=req.models[0] if req.models else model,
+                            content_delta=content_delta,
+                            finish_reason=None,
+                            role_delta=not role_emitted,
+                        )
+                        role_emitted = True
+
+                    elif ev_type == "tool_calls":
+                        # Ensure role is emitted before tool calls if not already
                         if not role_emitted:
                             yield self._chunk_bytes(
                                 chatcmpl_id=chatcmpl_id,
@@ -156,17 +160,6 @@ class ProviderRouter:
                             )
                             role_emitted = True
 
-                        if content_delta:
-                            yield self._chunk_bytes(
-                                chatcmpl_id=chatcmpl_id,
-                                created=int(time.time()),
-                                model=req.models[0] if req.models else model,
-                                content_delta=content_delta,
-                                finish_reason=None,
-                                role_delta=False,
-                            )
-
-                    elif ev_type == "tool_calls":
                         yield chunk_bytes_tool_calls(
                             chatcmpl_id=chatcmpl_id,
                             created=int(time.time()),
@@ -182,6 +175,19 @@ class ProviderRouter:
                         )
 
                     elif ev_type == "finish":
+                        # Ensure at least the role delta was sent
+                        if not role_emitted:
+                            yield self._chunk_bytes(
+                                chatcmpl_id=chatcmpl_id,
+                                created=int(time.time()),
+                                model=req.models[0] if req.models else model,
+                                content_delta="",
+                                finish_reason=None,
+                                role_delta=True,
+                            )
+                            role_emitted = True
+
+                        # final stop chunk
                         finish_reason = ev.get("finish_reason") or "stop"
                         yield self._chunk_bytes(
                             chatcmpl_id=chatcmpl_id,
@@ -189,13 +195,16 @@ class ProviderRouter:
                             model=req.models[0] if req.models else model,
                             content_delta="",
                             finish_reason=finish_reason,
-                            role_delta=False,
                         )
                         yield b"data: [DONE]\n\n"
+
+                        latency_ms = (time.perf_counter() - t0) * 1000
+                        req.strategy.record_success(key, req.models, pname)
+                        req.strategy.record_latency(key, pname, model, latency_ms)
                         return
 
 
-                # final stop chunk
+                # final stop chunk if the stream ended without a finish event
                 yield self._chunk_bytes(
                     chatcmpl_id=chatcmpl_id,
                     created=int(time.time()),
@@ -209,6 +218,7 @@ class ProviderRouter:
                 req.strategy.record_success(key, req.models, pname)
                 req.strategy.record_latency(key, pname, model, latency_ms)
                 return
+
 
             except Exception as e:
                 req.strategy.record_failure(key, req.models, pname, str(e), message_hash=req.context_id)
@@ -254,6 +264,12 @@ class ProviderRouter:
         finish_reason: str | None,
         role_delta: bool = False,
     ) -> bytes:
+        
+        delta: dict[str, Any] = {}
+        if role_delta:
+            delta["role"] = "assistant"
+        
+        delta["content"] = content_delta
 
         payload = {
             "id": chatcmpl_id,
@@ -263,11 +279,7 @@ class ProviderRouter:
             "choices": [
                 {
                     "index": 0,
-                    "delta": {
-                        "role": "assistant" if role_delta else None,
-                        "content": content_delta,
-                    },
-
+                    "delta": delta,
                     "finish_reason": finish_reason,
                 }
             ],
