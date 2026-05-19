@@ -24,7 +24,7 @@
       "type": "openai_compatible",
       "name": "openai_failover",
       "base_url": "https://api.openai.com/v1",
-      "api_key": "${OPENAI_API_KEY}",
+      "api_key": ["${OPENAI_API_KEY}",...],
       "models": {
         "gpt-4o-mini": []
       },
