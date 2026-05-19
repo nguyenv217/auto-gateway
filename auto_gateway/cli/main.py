@@ -89,29 +89,28 @@ def _build_providers(config) -> tuple[dict[str, BaseProvider], dict[str, dict[st
 
     return providers, all_models
 
-
 @app.command()
 def start(
-
     config: str = typer.Option(..., "--config", help="Path to config.json"),
-
-    host: str = typer.Option("127.0.0.1", "--host"),
-    port: int = typer.Option(8000, "--port"),
-    tunnel: str = typer.Option("none", "--tunnel", help="none|ngrok|cloudflared (public URL optional)"),
+    
+    host: str | None = typer.Option(None, "--host"),
+    port: int | None = typer.Option(None, "--port"),
+    tunnel: str | None = typer.Option(None, "--tunnel", help="none|ngrok|cloudflared (public URL optional)"),
 ):
     """Start config-driven gateway."""
     logger.info("Initializing configuration...")
     cfg = load_config(config)
 
-    # Allow CLI overrides
-    cfg.server.host = host
-    cfg.server.port = port
-    cfg.server.tunnel = tunnel
+    if host is not None:
+        cfg.server.host = host
+    if port is not None:
+        cfg.server.port = port
+    if tunnel is not None:
+        cfg.server.tunnel = tunnel
 
     providers, all_models = _build_providers(cfg)
 
     if cfg.router.strategy == "adaptive":
-        # persistence omitted for now; can be wired to config
         strategy = AdaptiveStrategy(
             providers=providers,
             all_models=all_models,
@@ -136,11 +135,8 @@ def start(
             port=cfg.server.port,
             config={"ngrok_authtoken": cfg.extra.get("tunnels", {}).get("ngrok_authtoken"), "cloudflared_binary": cfg.extra.get("tunnels", {}).get("cloudflared_binary")},
         )
-
-        # typer command is sync; run tunnel startup in event loop used by uvicorn via asyncio.run
         import asyncio
-
-        tunnel_info = asyncio.run(tunnel_info)  # type: ignore[assignment]
+        tunnel_info = asyncio.run(tunnel_info)
         typer.echo(f"Public URL ({cfg.server.tunnel}): {tunnel_info.public_url}")
 
     from ..network.uvicorn_runner import run_uvicorn_app

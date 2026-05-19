@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import re
-import sys
 from dataclasses import dataclass
 from typing import Optional
-
+import subprocess
+import threading
 
 @dataclass(frozen=True)
 class TunnelInfo:
@@ -26,6 +26,16 @@ async def start_ngrok(*, port: int, ngrok_authtoken: Optional[str] = None) -> Tu
     public_url = ngrok.connect(port, "http").public_url
     return TunnelInfo(public_url=public_url, backend="ngrok")
 
+def _drain_cloudflared_stdout(stdout, pattern, result_list):
+    # Continuously read from stdout to prevent OS buffer deadlocks
+    for line in iter(stdout.readline, b''):
+        if not line:
+            break
+        text = line.decode("utf-8", errors="ignore")
+        if not result_list:
+            m = pattern.search(text)
+            if m:
+                result_list.append(f"https://{m.group(1)}")
 
 async def start_cloudflared(
     *,
@@ -33,40 +43,39 @@ async def start_cloudflared(
     binary: str = "cloudflared",
 ) -> TunnelInfo:
     # Cloudflared usually prints URLs to stdout; parse for the first trycloudflare domain.
-    # Example line: "trycloudflare.com" or "https://xxxxx.trycloudflare.com"
-
     cmd = [binary, "tunnel", "--url", f"http://127.0.0.1:{port}"]
 
-    proc = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,
+    # Use Popen instead of asyncio to detach from the temporary CLI event loop
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
     )
 
-    if proc.stdout is None:  # pragma: no cover
-        raise RuntimeError("cloudflared stdout not available")
-
     pattern = re.compile(r"https?://([\w-]+\.trycloudflare\.com)")
+    result_list: list[str] = []
+    
+    # Start a daemon thread to continuously drain stdout
+    t = threading.Thread(
+        target=_drain_cloudflared_stdout,
+        args=(proc.stdout, pattern, result_list),
+        daemon=True
+    )
+    t.start()
 
     # Wait briefly for URL.
     deadline = asyncio.get_running_loop().time() + 20
     public_url: Optional[str] = None
+    
     while asyncio.get_running_loop().time() < deadline:
-        line = await proc.stdout.readline()
-        if not line:
-            await asyncio.sleep(0.05)
-            continue
-        text = line.decode("utf-8", errors="ignore")
-        m = pattern.search(text)
-        if m:
-            public_url = f"https://{m.group(1)}"
+        if result_list:
+            public_url = result_list[0]
             break
+        await asyncio.sleep(0.1)
 
     if not public_url:
-        # Surface some logs to help debugging.
         raise RuntimeError("Failed to start cloudflared tunnel (public URL not found)")
 
-    # Keep process running (daemon mode not supported here).
     return TunnelInfo(public_url=public_url, backend="cloudflared")
 
 

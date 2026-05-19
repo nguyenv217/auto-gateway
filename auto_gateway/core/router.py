@@ -3,8 +3,7 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, Iterator, Optional
-
+from typing import Any, AsyncIterator
 
 import asyncio
 import logging
@@ -14,6 +13,7 @@ logger = logging.getLogger("auto-gateway")
 from ..providers.base import BaseProvider, ProviderCallResult
 from ..strategies.base import BaseStrategy
 from .router_tool_calls_helpers import chunk_bytes_tool_calls
+from .exceptions import classify_exception
 
 @dataclass(frozen=True)
 class RouteRequest:
@@ -68,7 +68,16 @@ class ProviderRouter:
                 req.strategy.record_latency(key, pname, model, latency_ms)
                 return res
             except Exception as e:
-                req.strategy.record_failure(key, req.models, pname, str(e), message_hash=req.context_id)
+                error_type = classify_exception(e)
+
+                req.strategy.record_failure(
+                    key, 
+                    req.models, 
+                    pname, 
+                    error_type.value, 
+                    message_hash=req.context_id
+                )
+                
                 last = {
                     "text": None,
                     "reasoning": None,

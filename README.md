@@ -121,6 +121,7 @@ pip install -e ".[dev]"
   "server": {
     "host": "127.0.0.1",          // Bind address
     "port": 8000,                  // Port number
+    "api_key": "my-awesome-api-key", // Server auth key (via `Authrorization: Bearer`)
     "socket_path": null,           // UNIX socket path (optional, overrides host:port)
     "tunnel": "none"               // "none" | "ngrok" | "cloudflared"
   },
@@ -135,7 +136,7 @@ pip install -e ".[dev]"
       "base_url": "http://localhost:8001/v1",  // API base URL
       "api_key": null,              // API key (or env var reference)
       "models": {                   // Model name -> features
-        "gpt-4o-mini": ["vision"],
+        "gpt-4o-mini": ["vision", "tool_calls"], // `vision` -> supports images; `tool_calls` -> support tool callingg
         "gpt-4o": []
       },
       "extra_body": {}              // Extra params sent with every request
@@ -143,7 +144,7 @@ pip install -e ".[dev]"
     {
       "type": "google",
       "name": "gemini",
-      "api_key": "${GOOGLE_API_KEY}",      // Env var substitution
+      "api_key": ["${GOOGLE_API_KEY}", "${KEY_FROM_SECOND_ACCOUNT}", ...],      // Env var substitution
       "models": {
         "gemini-1.5-flash": ["vision"]
       }

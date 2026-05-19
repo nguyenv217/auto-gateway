@@ -2,8 +2,9 @@
   "server": {
     "host": "127.0.0.1",
     "port": 8000,
+    "api_key": "my-awesome-api-key"
     "socket_path": null,
-    "tunnel": "none"
+    "tunnel": "cloudflared"
   },
   "router": {
     "strategy": "adaptive",
@@ -39,7 +40,9 @@
       }
     }
   ],
-  "extra": {}
+  "extra": {
+    "cloudflared_binary": "cloudflared"
+  }
 }
 
 

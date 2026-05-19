@@ -404,7 +404,7 @@ class AdaptiveStrategy(BaseStrategy):
                 # error_type already bucketed or plain; keep heuristic minimal
                 et = ErrorType(error_type)
             except Exception:
-                pass
+                et = ErrorType.UNKNOWN
 
             if et == ErrorType.RATE_LIMIT and message_hash:
                 metrics.rate_limited_this_session = True
