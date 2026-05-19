@@ -1,6 +1,6 @@
 config.json
 TODO.md
-auto_gateway.egg-info
 __pycache__
 .pytest_cache
 .env
+scripts
