@@ -26,13 +26,13 @@ class ProviderBaseConfig(BaseModel):
 class OpenAICompatibleProviderConfig(ProviderBaseConfig):
     type: Literal["openai_compatible"] = "openai_compatible"
     base_url: str
-    api_key: str | None = None
+    api_key: str | list[str] | None = None
     extra_body: dict[str, Any] = Field(default_factory=dict)
 
 
 class GoogleProviderConfig(ProviderBaseConfig):
     type: Literal["google"] = "google"
-    api_key: str
+    api_key: str | list[str]
 
 
 ProviderConfig = OpenAICompatibleProviderConfig | GoogleProviderConfig

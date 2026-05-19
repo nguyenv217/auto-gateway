@@ -58,18 +58,27 @@ def _build_providers(config) -> tuple[dict[str, BaseProvider], dict[str, dict[st
     all_models: dict[str, dict[str, list[str]]] = {}
 
     for p in config.providers:
+        # Normalize api_key to a list to support rotation
+        raw_keys = p.api_key
+        if isinstance(raw_keys, list):
+            keys_list = raw_keys
+        elif raw_keys is not None:
+            keys_list = [raw_keys]
+        else:
+            keys_list = [None]
+
         if p.type == "openai_compatible":
             prov = OpenAICompatibleProvider(
                 name=p.name,
                 base_url=p.base_url,
-                keys=[p.api_key] if p.api_key else [None],
+                keys=keys_list,
                 model_configs=p.models,
                 extra={"extra_body": getattr(p, "extra_body", {})},
             )
         elif p.type == "google":
             prov = GoogleProvider(
                 name=p.name,
-                keys=[p.api_key],
+                keys=keys_list,
                 model_configs=p.models,
             )
         else:
