@@ -1,0 +1,43 @@
+[project]
+name = "auto-gateway"
+version = "0.1.0"
+description = "Standalone async auto-gateway with provider routing"
+requires-python = ">=3.10"
+readme = "README.md"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests", "auto_gateway/tests"]
+
+
+[tool.black]
+line-length = 100
+
+[tool.ruff]
+line-length = 100
+
+[project.scripts]
+auto-gateway = "auto_gateway.cli.main:app"
+
+[tool.poetry.dependencies]
+# kept for compatibility with environments that use poetry metadata (ignored by PEP 621)
+
+[dependencies]
+fastapi = "^0.115.0"
+uvicorn = {version = "^0.30.6", extras = ["standard"]}
+httpx = "^0.27.2"
+pydantic = "^2.9.2"
+typer = "^0.12.5"
+
+[project.optional-dependencies]
+testing = [
+  "pytest>=8.0.0",
+  "pytest-asyncio>=0.24.0",
+  "respx>=0.21.0",
+  "pyngrok>=7.2.0",
+]
+
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"

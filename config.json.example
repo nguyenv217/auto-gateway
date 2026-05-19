@@ -1,0 +1,46 @@
+{
+  "server": {
+    "host": "127.0.0.1",
+    "port": 8000,
+    "socket_path": null,
+    "tunnel": "none"
+  },
+  "router": {
+    "strategy": "adaptive",
+    "retries": 1
+  },
+  "providers": [
+    {
+      "type": "openai_compatible",
+      "name": "local_openai_compatible",
+      "base_url": "http://127.0.0.1:8001/v1",
+      "api_key": null,
+      "models": {
+        "gpt-4o-mini": []
+      },
+      "extra_body": {}
+    },
+    {
+      "type": "openai_compatible",
+      "name": "openai_failover",
+      "base_url": "https://api.openai.com/v1",
+      "api_key": "${OPENAI_API_KEY}",
+      "models": {
+        "gpt-4o-mini": []
+      },
+      "extra_body": {}
+    },
+    {
+      "type": "google",
+      "name": "google_failover",
+      "api_key": "${GOOGLE_API_KEY}",
+      "models": {
+        "gemini-1.5-flash": []
+      }
+    }
+  ],
+  "extra": {}
+}
+
+
+
