@@ -7,19 +7,31 @@ from typing import Any, AsyncIterator
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi import Depends, HTTPException, status
 
 from .models import (
     ChatCompletionRequest,
     ChatCompletionResponse,
-    ChatCompletionChunk,
-    ChatCompletionChunkChoice,
     ChatMessage,
-    sse_pack,
 )
 from .router import ProviderRouter, RouteRequest
 
+security = HTTPBearer(auto_error=False)
 
-def create_app(*, router: ProviderRouter, strategy, model_name_default: str = "gateway") -> FastAPI:
+def verify_api_key(api_key: str | None):
+    """Dependency that verifies the Authorization header if an api_key is configured."""
+    async def _verify(credentials: HTTPAuthorizationCredentials = Depends(security)):
+        if api_key:
+            if not credentials or credentials.credentials != api_key:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid or missing API key",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+    return _verify
+
+def create_app(*, router: ProviderRouter, strategy, model_name_default: str = "gateway", api_key: str | None = None) -> FastAPI:
     app = FastAPI()
     app.add_middleware(
         CORSMiddleware,
@@ -38,9 +50,8 @@ def create_app(*, router: ProviderRouter, strategy, model_name_default: str = "g
             "data": [{"id": state["model"], "object": "model", "created": int(time.time()), "owned_by": "auto-gateway"}]
         }
 
-    @app.post("/v1/chat/completions")
+    @app.post("/v1/chat/completions", dependencies=[Depends(verify_api_key(api_key))])
     async def chat_completions(payload: ChatCompletionRequest, request: Request):
-
         del request
 
         # Extract extra fields like max_tokens, top_p, etc. dynamically

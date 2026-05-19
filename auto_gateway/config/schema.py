@@ -10,7 +10,7 @@ class ServerConfig(BaseModel):
     port: int = 8000
     socket_path: str | None = None
     tunnel: Literal["none", "ngrok", "cloudflared"] = "none"
-
+    api_key: str | None = None 
 
 class RouterConfig(BaseModel):
     strategy: Literal["sequential", "adaptive"] = "sequential"

@@ -121,7 +121,11 @@ def start(
         strategy = SequentialStrategy(providers, all_models)
 
     router = ProviderRouter(providers)
-    application = create_app(router=router, strategy=strategy)
+    application = create_app(
+        router=router, 
+        strategy=strategy,
+        api_key=cfg.server.api_key
+    )
 
     from ..network.hosting import start_tunnel
 

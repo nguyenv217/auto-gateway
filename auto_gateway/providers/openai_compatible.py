@@ -7,7 +7,6 @@ import httpx
 from .base import BaseProvider, ProviderCallResult, BaseProviderDelta
 
 
-
 class OpenAICompatibleProvider(BaseProvider):
     """Async OpenAI-compatible provider.
 
