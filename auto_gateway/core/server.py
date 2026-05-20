@@ -64,8 +64,11 @@ def create_app(*, router: ProviderRouter, strategy, model_name_default: str = "g
         route_req = RouteRequest(
             strategy=state["strategy"],
             provider=None,
-            models=[payload.model],
+            # If the requested model isn't supported by any provider, we still
+            # want failover to try available providers.
+            models=[payload.model] if payload.model else None,
             timeout=state["timeout"],
+
             shuffle=False,
             tools=payload.tools,
             tool_choice=payload.tool_choice,
@@ -73,6 +76,7 @@ def create_app(*, router: ProviderRouter, strategy, model_name_default: str = "g
             messages=[m.model_dump(exclude_none=True) for m in payload.messages],
             context_id=None,
         )
+
 
         if not payload.stream:
             res = await state["router"].route(route_req)

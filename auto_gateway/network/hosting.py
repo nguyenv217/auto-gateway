@@ -42,41 +42,47 @@ async def start_cloudflared(
     port: int,
     binary: str = "cloudflared",
 ) -> TunnelInfo:
-    # Cloudflared usually prints URLs to stdout; parse for the first trycloudflare domain.
+    """Start a cloudflared tunnel and parse the first *.trycloudflare.com URL.
+
+    Notes:
+    - Tests monkeypatch asyncio.create_subprocess_exec; keep this implementation
+      asyncio-friendly so the tests can intercept stdout.
+    """
+
     cmd = [binary, "tunnel", "--url", f"http://127.0.0.1:{port}"]
 
-    # Use Popen instead of asyncio to detach from the temporary CLI event loop
-    proc = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-    )
-
     pattern = re.compile(r"https?://([\w-]+\.trycloudflare\.com)")
-    result_list: list[str] = []
-    
-    # Start a daemon thread to continuously drain stdout
-    t = threading.Thread(
-        target=_drain_cloudflared_stdout,
-        args=(proc.stdout, pattern, result_list),
-        daemon=True
-    )
-    t.start()
 
-    # Wait briefly for URL.
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+    )
+
+    if proc.stdout is None:
+        raise RuntimeError("Failed to start cloudflared tunnel (no stdout)")
+
     deadline = asyncio.get_running_loop().time() + 20
     public_url: Optional[str] = None
-    
+
+    # Read stdout line-by-line until we see a trycloudflare URL.
     while asyncio.get_running_loop().time() < deadline:
-        if result_list:
-            public_url = result_list[0]
+        line = await proc.stdout.readline()
+        if not line:
+            await asyncio.sleep(0.05)
+            continue
+
+        text = line.decode("utf-8", errors="ignore")
+        m = pattern.search(text)
+        if m:
+            public_url = f"https://{m.group(1)}"
             break
-        await asyncio.sleep(0.1)
 
     if not public_url:
         raise RuntimeError("Failed to start cloudflared tunnel (public URL not found)")
 
     return TunnelInfo(public_url=public_url, backend="cloudflared")
+
 
 
 async def start_tunnel(tunnel: str, *, port: int, config: dict | None = None) -> Optional[TunnelInfo]:
