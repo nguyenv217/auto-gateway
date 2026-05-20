@@ -31,7 +31,7 @@ def verify_api_key(api_key: str | None):
                 )
     return _verify
 
-def create_app(*, router: ProviderRouter, strategy, model_name_default: str = "gateway", api_key: str | None = None) -> FastAPI:
+def create_app(*, router: ProviderRouter, strategy, model_name_default: str = "gateway", api_key: str | None = None, timeout: float = 60.0) -> FastAPI:
     app = FastAPI()
     app.add_middleware(
         CORSMiddleware,
@@ -41,7 +41,7 @@ def create_app(*, router: ProviderRouter, strategy, model_name_default: str = "g
         allow_headers=["*"],
     )
 
-    state = {"router": router, "strategy": strategy, "model": model_name_default}
+    state = {"router": router, "strategy": strategy, "model": model_name_default, "timeout": timeout}
 
     @app.get("/v1/models")
     async def list_models():
@@ -65,7 +65,7 @@ def create_app(*, router: ProviderRouter, strategy, model_name_default: str = "g
             strategy=state["strategy"],
             provider=None,
             models=None,
-            timeout=15.0,
+            timeout=state["timeout"],
             shuffle=False,
             tools=payload.tools,
             tool_choice=payload.tool_choice,

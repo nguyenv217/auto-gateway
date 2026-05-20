@@ -16,7 +16,6 @@ from ..providers.google import GoogleProvider
 from ..strategies.adaptive import AdaptiveStrategy
 from ..strategies.sequential import SequentialStrategy
 
-logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger("auto-gateway")
 
 app = typer.Typer(add_completion=False)
@@ -96,8 +95,20 @@ def start(
     host: str | None = typer.Option(None, "--host"),
     port: int | None = typer.Option(None, "--port"),
     tunnel: str | None = typer.Option(None, "--tunnel", help="none|ngrok|cloudflared (public URL optional)"),
+    log_level: str = typer.Option("INFO", "--log-level", help="Logging level (DEBUG, INFO, WARNING, ERROR)"),
 ):
     """Start config-driven gateway."""
+    numeric_level = getattr(logging, log_level.upper(), logging.INFO)
+    logging.basicConfig(
+        level=numeric_level,
+        format="%(levelname)s:%(name)s: %(message)s"
+    )
+    
+    # Silence chatty third-party HTTP loggers unless we explicitly ask for DEBUG
+    if numeric_level >= logging.INFO:
+        logging.getLogger("httpcore").setLevel(logging.WARNING)
+        logging.getLogger("httpx").setLevel(logging.WARNING)
+
     logger.info("Initializing configuration...")
     cfg = load_config(config)
 
@@ -123,7 +134,8 @@ def start(
     application = create_app(
         router=router, 
         strategy=strategy,
-        api_key=cfg.server.api_key
+        api_key=cfg.server.api_key,
+        timeout=cfg.router.timeout
     )
 
     from ..network.hosting import start_tunnel

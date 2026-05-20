@@ -52,6 +52,7 @@ class ProviderRouter:
             filtered_messages = self._filter_messages(req.messages, features)
 
             try:
+                logger.info(f"Routing request to provider '{pname}' (model: {model})...")
                 t0 = time.perf_counter()
 
                 res = await prov.call(
@@ -64,11 +65,23 @@ class ProviderRouter:
                     extra_body=req.extra_body,
                 )
                 latency_ms = (time.perf_counter() - t0) * 1000
+                logger.info(f"Provider '{pname}' succeeded in {latency_ms:.2f}ms.")
                 req.strategy.record_success(key, req.models, pname)
                 req.strategy.record_latency(key, pname, model, latency_ms)
                 return res
+            
             except Exception as e:
                 error_type = classify_exception(e)
+                error_msg = str(e)
+                
+                # Extract HTTP body to surface quota/auth issues without needing DEBUG logs
+                if hasattr(e, "response") and hasattr(e.response, "text"):
+                    try:
+                        error_msg = f"{e} - Response Body: {e.response.text}"
+                    except Exception:
+                        pass
+
+                logger.warning(f"Provider '{pname}' failed with {error_type.value}: {error_msg}")
 
                 req.strategy.record_failure(
                     key, 
@@ -118,6 +131,7 @@ class ProviderRouter:
             filtered_messages = self._filter_messages(req.messages, features)
 
             try:
+                logger.info(f"Routing streaming request to provider '{pname}' (model: {model})...")
                 t0 = time.perf_counter()
 
                 stream = prov.call_stream(
@@ -208,6 +222,7 @@ class ProviderRouter:
                         yield b"data: [DONE]\n\n"
 
                         latency_ms = (time.perf_counter() - t0) * 1000
+                        logger.info(f"Provider '{pname}' stream finished in {latency_ms:.2f}ms.")
                         req.strategy.record_success(key, req.models, pname)
                         req.strategy.record_latency(key, pname, model, latency_ms)
                         return
@@ -224,13 +239,23 @@ class ProviderRouter:
                 yield b"data: [DONE]\n\n"
 
                 latency_ms = (time.perf_counter() - t0) * 1000
+                logger.info(f"Provider '{pname}' stream finished in {latency_ms:.2f}ms.")
                 req.strategy.record_success(key, req.models, pname)
                 req.strategy.record_latency(key, pname, model, latency_ms)
                 return
 
 
             except Exception as e:
-                req.strategy.record_failure(key, req.models, pname, str(e), message_hash=req.context_id)
+                error_type = classify_exception(e)
+                error_msg = str(e)
+                if hasattr(e, "response") and hasattr(e.response, "text"):
+                    try:
+                        error_msg = f"{e} - Response Body: {e.response.text}"
+                    except Exception:
+                        pass
+                
+                logger.warning(f"Provider '{pname}' stream failed with {error_type.value}: {error_msg}")
+                req.strategy.record_failure(key, req.models, pname, error_type.value, message_hash=req.context_id)
                 # try next provider
                 continue
 

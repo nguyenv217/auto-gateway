@@ -7,8 +7,6 @@ import logging
 logger = logging.getLogger("uvicorn_runner")
 
 def run_uvicorn_app(*, app, host: str, port: int, socket_path: Optional[str] = None) -> None:
-    logging.basicConfig(level=logging.INFO)
-
     import uvicorn
 
     # UDS support is tricky across OSes.

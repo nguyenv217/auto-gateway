@@ -15,6 +15,7 @@ class ServerConfig(BaseModel):
 class RouterConfig(BaseModel):
     strategy: Literal["sequential", "adaptive"] = "sequential"
     retries: int = 1
+    timeout: float = 60.0
 
 
 class ProviderBaseConfig(BaseModel):
