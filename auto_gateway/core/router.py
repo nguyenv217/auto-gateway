@@ -66,7 +66,7 @@ class ProviderRouter:
                 )
                 latency_ms = (time.perf_counter() - t0) * 1000
                 logger.info(f"Provider '{pname}' succeeded in {latency_ms:.2f}ms.")
-                req.strategy.record_success(key, req.models, pname)
+                req.strategy.record_success(key, model, pname)
                 req.strategy.record_latency(key, pname, model, latency_ms)
                 return res
             
@@ -85,7 +85,7 @@ class ProviderRouter:
 
                 req.strategy.record_failure(
                     key, 
-                    req.models, 
+                    model, 
                     pname, 
                     error_type.value, 
                     message_hash=req.context_id
@@ -223,7 +223,7 @@ class ProviderRouter:
 
                         latency_ms = (time.perf_counter() - t0) * 1000
                         logger.info(f"Provider '{pname}' stream finished in {latency_ms:.2f}ms.")
-                        req.strategy.record_success(key, req.models, pname)
+                        req.strategy.record_success(key, model, pname)
                         req.strategy.record_latency(key, pname, model, latency_ms)
                         return
 
@@ -240,7 +240,7 @@ class ProviderRouter:
 
                 latency_ms = (time.perf_counter() - t0) * 1000
                 logger.info(f"Provider '{pname}' stream finished in {latency_ms:.2f}ms.")
-                req.strategy.record_success(key, req.models, pname)
+                req.strategy.record_success(key, model, pname)
                 req.strategy.record_latency(key, pname, model, latency_ms)
                 return
 
@@ -255,7 +255,7 @@ class ProviderRouter:
                         pass
                 
                 logger.warning(f"Provider '{pname}' stream failed with {error_type.value}: {error_msg}")
-                req.strategy.record_failure(key, req.models, pname, error_type.value, message_hash=req.context_id)
+                req.strategy.record_failure(key, model, pname, error_type.value, message_hash=req.context_id)
                 # try next provider
                 continue
 

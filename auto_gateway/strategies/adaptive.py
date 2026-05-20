@@ -383,12 +383,9 @@ class AdaptiveStrategy(BaseStrategy):
     def _get_cost_factor(self, model: str) -> float:
         return 1.0
 
-    def record_failure(self, key, models, provider, error_type: str = "unknown", message_hash: str | None = None):
+    def record_failure(self, key, model: str, provider: str, error_type: str = "unknown", message_hash: str | None = None):
         with self._lock:
-            key_hash = self._find_key_hash(provider, key)
-            if not key_hash:
-                return
-
+            key_hash = self._hash_key(provider, model, key)
             metrics = self.health_registry.get(key_hash)
             if not metrics:
                 return
@@ -421,11 +418,9 @@ class AdaptiveStrategy(BaseStrategy):
 
             self._save_state()
 
-    def record_success(self, key, models, provider):
+    def record_success(self, key, model: str, provider: str):
         with self._lock:
-            key_hash = self._find_key_hash(provider, key)
-            if not key_hash:
-                return
+            key_hash = self._hash_key(provider, model, key)
             metrics = self.health_registry.get(key_hash)
             if metrics:
                 metrics.total_requests += 1
@@ -442,11 +437,9 @@ class AdaptiveStrategy(BaseStrategy):
 
             self._save_state()
 
-    def record_latency(self, key, provider, model, latency_ms: float, **kwargs):
+    def record_latency(self, key, provider: str, model: str, latency_ms: float, **kwargs):
         with self._lock:
-            key_hash = self._find_key_hash(provider, key)
-            if not key_hash:
-                return
+            key_hash = self._hash_key(provider, model, key)
             metrics = self.health_registry.get(key_hash)
             if metrics:
                 metrics.total_latency_ms += latency_ms
@@ -513,14 +506,6 @@ class AdaptiveStrategy(BaseStrategy):
     def _hash_key(self, pname: str, mname: str, key) -> str:
         key_str = str(key) if key else "none"
         return f"{pname}:{mname}:{key_str[:20]}"
-
-    def _find_key_hash(self, provider: str, key) -> str | None:
-        for hash_key in self.health_registry.keys():
-            if hash_key.startswith(f"{provider}:"):
-                key_str = str(key) if key else "none"
-                if hash_key.endswith(key_str[:20]):
-                    return hash_key
-        return None
 
     def _save_state(self):
         if not self.persistence_path:
