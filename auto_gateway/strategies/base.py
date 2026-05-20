@@ -28,3 +28,22 @@ class BaseStrategy(ABC):
     def record_latency(self, *args: Any, **kwargs: Any) -> None:
         return
 
+    @staticmethod
+    def normalize_model_name(name: str) -> str:
+        """Strips provider prefixes (e.g., 'fireworks/llama-3' -> 'llama-3') and lowercases."""
+        if "/" in name:
+            name = name.split("/", 1)[-1]
+        return name.lower().strip()
+
+    @staticmethod
+    def models_match(requested_models: list[str] | None, provider_model: str) -> bool:
+        """Checks if the provider's model maps to any of the requested models."""
+        if not requested_models:
+            return True  # If no specific models requested, everything matches
+        
+        norm_provider = BaseStrategy.normalize_model_name(provider_model)
+        for req_m in requested_models:
+            # Match normalized (e.g. 'gpt-4o' == 'gpt-4o') or exact (in case prefixes were explicitly requested)
+            if BaseStrategy.normalize_model_name(req_m) == norm_provider or req_m.lower().strip() == provider_model.lower().strip():
+                return True
+        return False

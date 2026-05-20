@@ -62,7 +62,8 @@ class HealthMetrics:
     successful_requests: int = 0
     failed_requests: int = 0
     total_latency_ms: float = 0.0
-    latency_samples: list = field(default_factory=list)
+    latency_samples: list = field(default_factory=list) # Kept for backwards compatibility with saved JSON state
+    ewma_latency_ms: float = 0.0
     error_counts: dict = field(default_factory=dict)
     last_success_time: float = 0
     last_failure_time: float = 0
@@ -80,9 +81,9 @@ class HealthMetrics:
 
     @property
     def avg_latency_ms(self) -> float:
-        if not self.latency_samples:
-            return 1000
-        return statistics.mean(self.latency_samples)
+        if self.ewma_latency_ms == 0.0:
+            return 1000.0
+        return self.ewma_latency_ms
 
     @property
     def health_score(self) -> float:
@@ -300,7 +301,7 @@ class AdaptiveStrategy(BaseStrategy):
 
             provider_models = self.all_models.get(pname, {})
             for mname, features in provider_models.items():
-                if models and mname not in models:
+                if models and not self.models_match(models, mname):
                     continue
 
                 keys = prov.get_keys() or [None]
@@ -335,8 +336,9 @@ class AdaptiveStrategy(BaseStrategy):
     def _get_index(self, L, entry):
         if not L:
             return -1
+        norm_entry = self.normalize_model_name(entry)
         for i, e in enumerate(L):
-            if e == entry:
+            if self.normalize_model_name(e) == norm_entry or e.lower() == entry.lower():
                 return i
         return -1
 
@@ -443,9 +445,12 @@ class AdaptiveStrategy(BaseStrategy):
             metrics = self.health_registry.get(key_hash)
             if metrics:
                 metrics.total_latency_ms += latency_ms
-                metrics.latency_samples.append(latency_ms)
-                if len(metrics.latency_samples) > 100:
-                    metrics.latency_samples = metrics.latency_samples[-100:]
+                
+                # Apply EWMA with an alpha of 0.3 (weights recent requests significantly higher)
+                if metrics.ewma_latency_ms == 0.0:
+                    metrics.ewma_latency_ms = latency_ms
+                else:
+                    metrics.ewma_latency_ms = (0.3 * latency_ms) + (0.7 * metrics.ewma_latency_ms)
 
     def should_backoff(self, key_hash: str, error_type: ErrorType) -> bool:
         metrics = self.health_registry.get(key_hash)

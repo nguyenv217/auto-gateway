@@ -60,7 +60,7 @@ class SequentialStrategy(BaseStrategy):
             matched = [
                 pname
                 for pname, p_models in self.all_models.items()
-                if any(m in p_models for m in models)
+                if any(self.models_match(models, avail_m) for avail_m in p_models)
             ]
             all_providers = list(self.providers.keys())
 
@@ -100,7 +100,12 @@ class SequentialStrategy(BaseStrategy):
         # This enables provider failover even when the originally requested model
         # isn't advertised by the next provider.
         if models:
-            allowed = [m for m in models if m in self.all_models.get(pname, {})]
+            allowed = []
+            for req_m in models:
+                for avail_m in self.all_models.get(pname, {}):
+                    if self.models_match([req_m], avail_m) and avail_m not in allowed:
+                        allowed.append(avail_m)
+                        
             if allowed:
                 if shuffle:
                     random.shuffle(allowed)

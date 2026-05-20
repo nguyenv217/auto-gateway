@@ -61,12 +61,26 @@ def create_app(*, router: ProviderRouter, strategy, model_name_default: str = "g
             if k not in {"model", "messages", "tools", "tool_choice", "stream"}
         }
 
+        raw_model = payload.model.strip() if payload.model else None
+        requested_models: list[str] | None = None
+
+        if raw_model.lower() in ("", "none", "any", "auto"):
+            requested_models = None
+        elif raw_model.startswith("[") and raw_model.endswith("]"):
+            # Parse "[modelA, modelB]"
+            requested_models = [m.strip().strip("'\"") for m in raw_model[1:-1].split(",") if m.strip()]
+        elif "," in raw_model:
+            # Parse "modelA, modelB"
+            requested_models = [m.strip() for m in raw_model.split(",") if m.strip()]
+        else:
+            requested_models = [raw_model]
+
         route_req = RouteRequest(
             strategy=state["strategy"],
             provider=None,
             # If the requested model isn't supported by any provider, we still
             # want failover to try available providers.
-            models=[payload.model] if payload.model else None,
+            models=requested_models,
             timeout=state["timeout"],
 
             shuffle=False,

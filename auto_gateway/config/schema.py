@@ -13,7 +13,7 @@ class ServerConfig(BaseModel):
     api_key: str | None = None 
 
 class RouterConfig(BaseModel):
-    strategy: Literal["sequential", "adaptive"] = "sequential"
+    strategy: Literal["sequential", "adaptive", "bandit"] = "sequential"
     retries: int = 1
     timeout: float = 60.0
 

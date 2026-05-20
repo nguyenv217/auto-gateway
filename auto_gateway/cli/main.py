@@ -15,6 +15,7 @@ from ..providers.openai_compatible import OpenAICompatibleProvider
 from ..providers.google import GoogleProvider
 from ..strategies.adaptive import AdaptiveStrategy
 from ..strategies.sequential import SequentialStrategy
+from ..strategies.bandit import UCBBanditStrategy
 
 logger = logging.getLogger("auto-gateway")
 
@@ -127,6 +128,8 @@ def start(
             all_models=all_models,
             persistence_path=None,
         )
+    elif cfg.router.strategy == "bandit":
+        strategy = UCBBanditStrategy(providers, all_models)
     else:
         strategy = SequentialStrategy(providers, all_models)
 
