@@ -31,7 +31,8 @@ def verify_api_key(api_key: str | None):
                 )
     return _verify
 
-def create_app(*, router: ProviderRouter, strategy, model_name_default: str = "gateway", api_key: str | None = None, timeout: float = 60.0) -> FastAPI:
+def create_app(*, router: ProviderRouter, strategy, model_name_default: str = "gateway", api_key: str | None = None, timeout: float = 60.0, all_models: dict[str, dict[str, list[str]]] | None = None) -> FastAPI:
+
     app = FastAPI()
     app.add_middleware(
         CORSMiddleware,
@@ -41,14 +42,32 @@ def create_app(*, router: ProviderRouter, strategy, model_name_default: str = "g
         allow_headers=["*"],
     )
 
-    state = {"router": router, "strategy": strategy, "model": model_name_default, "timeout": timeout}
+    state = {"router": router, "strategy": strategy, "model": model_name_default, "timeout": timeout, "all_models": all_models or {}}
 
-    @app.get("/v1/models")
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok", "providers": len(state["all_models"])}
+
+    @app.get("/v1/models", dependencies=[Depends(verify_api_key(api_key))])
     async def list_models():
+        models_data = []
+        seen_models: set[str] = set()
+        for provider_name, provider_models in state["all_models"].items():
+            for model_id in provider_models:
+                if model_id not in seen_models:
+                    seen_models.add(model_id)
+                    models_data.append({
+                        "id": model_id,
+                        "object": "model",
+                        "created": int(time.time()),
+                        "owned_by": provider_name,
+                    })
         return {
             "object": "list",
-            "data": [{"id": state["model"], "object": "model", "created": int(time.time()), "owned_by": "auto-gateway"}]
+            "data": models_data,
         }
+
 
     @app.post("/v1/chat/completions", dependencies=[Depends(verify_api_key(api_key))])
     async def chat_completions(payload: ChatCompletionRequest, request: Request):

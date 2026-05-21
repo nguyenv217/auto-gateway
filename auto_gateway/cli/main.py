@@ -7,7 +7,8 @@ import logging
 
 import typer
 
-from ..config.manager import load_config
+from ..config.manager import load_config, save_global_config, load_global_config
+
 from ..core.router import ProviderRouter
 from ..core.server import create_app
 from ..providers.base import BaseProvider, ProviderCallResult
@@ -91,9 +92,10 @@ def _build_providers(config) -> tuple[dict[str, BaseProvider], dict[str, dict[st
 
 @app.command()
 def start(
-    config: str = typer.Option(..., "--config", help="Path to config.json"),
+    config: str | None = typer.Option(None, "--config", help="Path to config.json (uses global config if omitted)"),
     
     host: str | None = typer.Option(None, "--host"),
+
     port: int | None = typer.Option(None, "--port"),
     tunnel: str | None = typer.Option(None, "--tunnel", help="none|ngrok|cloudflared (public URL optional)"),
     log_level: str = typer.Option("INFO", "--log-level", help="Logging level (DEBUG, INFO, WARNING, ERROR)"),
@@ -111,7 +113,16 @@ def start(
         logging.getLogger("httpx").setLevel(logging.WARNING)
 
     logger.info("Initializing configuration...")
-    cfg = load_config(config)
+    if config is None:
+        try:
+            cfg = load_global_config()
+            logger.info("Loaded global config from ~/.auto-gateway/config.json")
+        except FileNotFoundError as e:
+            typer.echo(f"Error: {e}", err=True)
+            raise typer.Exit(code=1)
+    else:
+        cfg = load_config(config)
+
 
     if host is not None:
         cfg.server.host = host
@@ -138,8 +149,10 @@ def start(
         router=router, 
         strategy=strategy,
         api_key=cfg.server.api_key,
-        timeout=cfg.router.timeout
+        timeout=cfg.router.timeout,
+        all_models=all_models,
     )
+
 
     from ..network.hosting import start_tunnel
 
@@ -177,7 +190,17 @@ def check(
 
 
 @app.command()
+def save_global(
+    config: str = typer.Option(..., "--config", help="Path to config.json to save as global"),
+):
+    """Save the specified config as the global default config."""
+    save_global_config(config)
+    typer.echo(f"Global config saved to ~/.auto-gateway/config.json")
+
+
+@app.command()
 def version():
+
     typer.echo("auto-gateway 0.1.0")
 
 if __name__ == "__main__":
