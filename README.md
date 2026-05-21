@@ -201,6 +201,8 @@ OpenAI-compatible chat completions endpoint.
 }
 ```
 
+If `api_key` is specified config.json's `server` config, pass header `Authorization: Bearer $api_key`.
+
 #### Response (non-streaming)
 
 ```json
@@ -226,6 +228,39 @@ OpenAI-compatible chat completions endpoint.
   }
 }
 ```
+
+### `GET /v1/models`
+
+Requires Authorization header if `api_key` is configured for server in config.json.
+
+#### Response
+```json
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "gpt-4o-mini",
+      "object": "model",
+      "created": 1700000000,
+      "owned_by": "openai"
+    },
+    {
+      "id": "openai/gpt-oss-120b",
+      "object": "model",
+      "created": 1700000000,
+      "owned_by": "groq"
+    }
+  ]
+}
+```
+
+### `GET /health`
+
+#### Response
+{
+  "status": "ok",
+  "providers": 2
+}
 
 #### Response (streaming)
 
