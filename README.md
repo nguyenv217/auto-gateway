@@ -80,18 +80,19 @@ pip install -e ".[dev]"
 │  │  - message filtering (vision/media/video)        │   │
 │  │  - tool call SSE chunking                        │   │
 │  │  - failover on exception                         │   │
-│  └──────────┬────────────────────┬──────────────────┘   │
-│             │                    │                      │
-│  ┌──────────▼───────┐  ┌─────────▼──────────┐           │
-│  │  Sequential      │  │   Adaptive         │           │
-│  │  Strategy        │  │   Strategy         │           │
-│  │  (ordered list)  │  │  (health + cb)     │           │
-│  └──────────┬───────┘  └─────────┬──────────┘           │
-│             │                    │                      │
-└─────────────┼────────────────────┼──────────────────────┘
-              │                    │
-┌─────────────▼────────────────────▼───────────────────────┐
-│                    Providers                             │
+│  └─────────────────────────┬────────────────────────┘   │
+│                            │                            │
+│                 ┌──────────▼───────┐                    │
+│                 │  Strategy:       │                    │
+│                 │  * Sequential    │                    │
+│                 │  * Adaptive      │                    │
+                  │  * Bandit/UCB1   │                    │
+│                 └──────────┬───────┘                    │
+│                            │                            │                      
+└────────────────────────────┼────────────────────────────┘
+                             │      
+┌────────────────────────────▼─────────────────────────────┐
+│                         Providers                        │
 │  ┌─────────────────┐  ┌─────────────────┐                │
 │  │ OpenAICompatible│  │   Google        │                │
 │  │ (httpx.Async)   │  │ (genai thread)  │                │
@@ -126,8 +127,8 @@ pip install -e ".[dev]"
     "tunnel": "none"               // "none" | "ngrok" | "cloudflared"
   },
   "router": {
-    "strategy": "adaptive",        // "sequential" | "adaptive"
-    "retries": 1                   // Not yet wired; for future use
+    "strategy": "adaptive",        // "sequential" | "adaptive" | "bandit"
+    "retries": 1                   // Retries per key-provider-model pair
   },
   "providers": [
     {
@@ -144,7 +145,7 @@ pip install -e ".[dev]"
     {
       "type": "google",
       "name": "gemini",
-      "api_key": ["${GOOGLE_API_KEY}", "${KEY_FROM_SECOND_ACCOUNT}", ...],      // Env var substitution
+      "api_key": ["GOOGLE_API_KEY_1", "GOOGLE_API_KEY_2}", ...],      
       "models": {
         "gemini-1.5-flash": ["vision"]
       }
@@ -152,16 +153,12 @@ pip install -e ".[dev]"
   ],
   "extra": {
     "tunnels": {                    // Tunnel-specific config (optional)
-      "ngrok_authtoken": "${NGROK_AUTHTOKEN}",
+      "ngrok_authtoken": "YOUR_NGROK_AUTHTOKEN",
       "cloudflared_binary": "cloudflared"
     }
   }
 }
 ```
-
-### Environment variable substitution
-
-Values like `${OPENAI_API_KEY}` are resolved from environment variables at runtime.
 
 ### Provider types
 
@@ -177,9 +174,10 @@ Features are strings that enable message filtering in the router:
 | Feature | Effect |
 |---------|--------|
 | `vision` | Image content (`image_url`) is forwarded to provider |
-| `media` | Media content is forwarded |
-| `video_vision` | Video content is forwarded |
-| *(none)* | Image/media/video content is stripped from messages |
+| `media` | Media content is forwarded for google (Built-in Coming Soon) |
+| `video_vision` | Video content is forwarded (Built-in Coming Soon) |
+| `tool_calls` | Specify that this model support tool calling |
+| *(none)* | Image/media/video content is stripped from messages. No tool calling. |
 
 ---
 
@@ -309,7 +307,7 @@ class BaseProvider(ABC):
         ...
 
     @abstractmethod
-    async def call(self, *, key, model, messages, timeout, tools, tool_choice, extra_body=None) -> ProviderCallResult:
+    async def call(self, *, key: str, model: str, messages: list[ChatMessage], timeout: float, tools: Optional[list[dict[str, Any]]] = None, tool_choice: str, extra_body: dict[str, Any] =None) -> ProviderCallResult:
         """Non-streaming call. Returns ProviderCallResult TypedDict."""
 
     async def call_stream(self, *, key, model, messages, timeout, tools, tool_choice, extra_body=None) -> AsyncIterator[BaseProviderDelta]:
@@ -409,6 +407,18 @@ auto-gateway check --config config.json
 # - gemini: type=google, models=['gemini-1.5-flash']
 ```
 
+### `save-global`
+
+Save your specified configuration to ~/.auto-gateway/config.json. 
+
+```bash
+auto-gateway save-global --config config.json
+
+```
+
+Afterward, you can start without specifying `--config`, i.e. `auto-gateway start`.
+
+
 ### `version`
 
 Print version.
@@ -466,21 +476,6 @@ auto-gateway/
 └── README.md
 ```
 
-### Running tests
-
-```bash
-# All tests (23 total)
-pytest
-
-# Verbose
-pytest -v
-
-# Specific test file
-pytest auto_gateway/tests/test_comprehensive_api.py -v
-
-# With coverage
-pytest --cov=auto_gateway
-```
 
 ### Adding a new provider
 
@@ -554,39 +549,6 @@ Providers communicate streaming events to the router via `BaseProviderDelta` dic
 ```
 
 The router translates these into OpenAI SSE `data: {...}\n\n` chunks with `[DONE]` termination.
-
----
-
-## Testing
-
-### Test categories
-
-| File | Tests | Coverage |
-|------|-------|----------|
-| `tests/test_smoke_server.py` | 1 | End-to-end API with dummy provider |
-| `tests/test_comprehensive_api.py` | 19 | Full API coverage (see below) |
-| `tests/test_openai_streaming_delta_shapes.py` | 1 | SSE chunk invariants |
-| `tests/test_streaming_and_failover.py` | 1 | Streaming + provider failover |
-| `tests/test_tunnel_url_parsing.py` | 1 | Cloudflared URL extraction |
-
-### Comprehensive test coverage (19 tests)
-
-- **Basic chat**: Non-streaming request/response, model, usage fields
-- **Tool calls**: Non-streaming with `tools` and `tool_choice`, tool call response
-- **Streaming delta shapes**: SSE chunks, content aggregation, finish reason
-- **Streaming tool call deltas**: Tool call index, id, function fields in SSE
-- **Provider failover**: Both streaming and non-streaming fallback to next provider
-- **All providers exhausted**: Graceful empty content response
-- **Message filtering**: Vision content preserved for vision provider, stripped for non-vision
-- **Config schema**: Valid config, invalid provider type raises `ValidationError`
-- **Config loading**: File-based config parsing
-- **Provider registry**: Extensibility pattern
-- **Tunnel info**: `TunnelInfo` dataclass
-- **Concurrent requests**: 10 simultaneous requests
-- **Empty streaming content**: Provider yielding only empty deltas
-- **Named provider routing**: Targeting specific provider
-- **SSE termination**: `[DONE]` marker
-- **Shuffle**: Random provider ordering
 
 ---
 

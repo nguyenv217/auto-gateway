@@ -170,8 +170,18 @@ class ProviderRouter:
                     raise TypeError("Provider call_stream() must return an async iterator")
 
                 role_emitted = False
+                
+                stream_iter = aiter(stream)
+                while True:
+                    try:
+                        # Enforce a strict inter-token timeout to prevent indefinite hanging 
+                        # if the connection is established but data is stalled.
+                        ev = await asyncio.wait_for(anext(stream_iter), timeout=req.timeout)
+                    except StopAsyncIteration:
+                        break
+                    except asyncio.TimeoutError:
+                        raise TimeoutError(f"Stream read timed out: no chunk received within {req.timeout}s.")
 
-                async for ev in stream:
                     if not ev:
                         continue
 
