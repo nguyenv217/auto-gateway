@@ -92,12 +92,21 @@ class ProviderRouter:
                 error_type = classify_exception(e)
                 error_msg = str(e)
                 
-                # Extract HTTP body to surface quota/auth issues without needing DEBUG logs
-                if hasattr(e, "response") and hasattr(e.response, "text"):
+                # Extract HTTP body safely.
+                # NOTE: accessing httpx.Response.text/content on streaming responses
+                # can raise httpx.ResponseNotRead. Wrap defensively.
+                error_body: str | None = None
+                resp = getattr(e, "response", None)
+                if resp is not None:
                     try:
-                        error_msg = f"{e} - Response Body: {e.response.text}"
+                        # Best-effort; may raise ResponseNotRead for streaming responses.
+                        error_body = getattr(resp, "text", None)
                     except Exception:
-                        pass
+                        error_body = None
+
+                if error_body:
+                    error_msg = f"{e} - Response Body: {error_body}"
+
 
                 logger.warning(f"Provider '{pname}' failed with {error_type.value}: {error_msg}")
 
@@ -135,6 +144,10 @@ class ProviderRouter:
 
         start = time.perf_counter()
 
+        any_chunk_emitted = False
+        last_error_type: str | None = None
+        last_error_msg: str | None = None
+
         for pname, model, key, features in req.strategy.generate_targets(
             req.provider,
             req.models,
@@ -147,6 +160,8 @@ class ProviderRouter:
                 continue
 
             filtered_messages = self._filter_messages(req.messages, features)
+
+            provider_emitted = False
 
             try:
                 logger.info(f"Routing streaming request to provider '{pname}' (model: {model})...")
@@ -161,6 +176,7 @@ class ProviderRouter:
                     tool_choice=req.tool_choice,
                     extra_body=req.extra_body,
                 )
+
 
                 # Some providers may accidentally implement call_stream as a coroutine.
                 if hasattr(stream, "__await__") and not hasattr(stream, "__aiter__"):
@@ -197,6 +213,9 @@ class ProviderRouter:
                             role_delta=not role_emitted,
                         )
                         role_emitted = True
+                        provider_emitted = True
+                        any_chunk_emitted = True
+
 
                     elif ev_type == "tool_calls":
                         # Ensure role is emitted before tool calls if not already
@@ -210,6 +229,8 @@ class ProviderRouter:
                                 role_delta=True,
                             )
                             role_emitted = True
+                            provider_emitted = True
+                            any_chunk_emitted = True
 
                         yield chunk_bytes_tool_calls(
                             chatcmpl_id=chatcmpl_id,
@@ -224,6 +245,9 @@ class ProviderRouter:
                             ],
                             finish_reason=None,
                         )
+                        provider_emitted = True
+                        any_chunk_emitted = True
+
 
                     elif ev_type == "finish":
                         # Ensure at least the role delta was sent
@@ -276,19 +300,50 @@ class ProviderRouter:
             except Exception as e:
                 error_type = classify_exception(e)
                 error_msg = str(e)
-                if hasattr(e, "response") and hasattr(e.response, "text"):
-                    try:
-                        error_msg = f"{e} - Response Body: {e.response.text}"
-                    except Exception:
-                        pass
                 
+                # Extract HTTP body safely.
+                # NOTE: accessing httpx.Response.text/content on streaming responses
+                # can raise httpx.ResponseNotRead. Wrap defensively.
+                error_body: str | None = None
+                resp = getattr(e, "response", None)
+                if resp is not None:
+                    try:
+                        # Best-effort; may raise ResponseNotRead for streaming responses.
+                        error_body = getattr(resp, "text", None)
+                    except Exception:
+                        error_body = None
+
+                if error_body:
+                    error_msg = f"{e} - Response Body: {error_body}"
+
+                last_error_type = error_type.value
+                last_error_msg = error_msg
+
+
                 logger.warning(f"Provider '{pname}' stream failed with {error_type.value}: {error_msg}")
                 req.strategy.record_failure(key, model, pname, error_type.value, message_hash=req.context_id)
                 # try next provider
                 continue
 
         _ = time.perf_counter() - start
-        raise RuntimeError("All providers exhausted in stream mode")
+
+        # No provider succeeded: emit a final SSE message and end with [DONE]
+        # so clients never attempt to continue reading an invalid/empty stream.
+        if not any_chunk_emitted:
+            model_out = req.models[0] if req.models else "gateway"
+            err_txt = last_error_msg or f"All providers exhausted ({last_error_type or 'unknown'})"
+            yield self._chunk_bytes(
+                chatcmpl_id=chatcmpl_id,
+                created=int(time.time()),
+                model=model_out,
+                content_delta=err_txt,
+                finish_reason="stop",
+                role_delta=True,
+            )
+
+        yield b"data: [DONE]\n\n"
+        return
+
 
     def _filter_messages(self, messages: list[dict[str, Any]], features: list[str]) -> list[dict[str, Any]]:
         supports_img = any(f.lower() in {"vision", "img2img"} for f in features)
