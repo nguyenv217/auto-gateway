@@ -206,7 +206,45 @@ class ProviderRouter:
                         continue
 
                     ev_type = ev.get("type")
-                    if ev_type == "content":
+
+                    # ---- handle provider-reported errors (e.g. from repaired SSE) ----
+                    if ev_type == "error":
+                        error_info = {
+                            "message": ev.get("message", "Unknown provider error"),
+                            "type": ev.get("error_type", "provider_error"),
+                            "code": ev.get("code"),
+                        }
+                        logger.warning(
+                            "Provider '%s' reported a stream error: %s",
+                            pname,
+                            error_info,
+                        )
+
+                        if provider_emitted:
+                            # Content has already been sent to the client;
+                            # we cannot failover cleanly. Emit a structured
+                            # error chunk and terminate with [DONE].
+                            err_payload = {
+                                "error": error_info,
+                            }
+                            yield f"data: {json.dumps(err_payload, separators=(',', ':'))}\n\n".encode("utf-8")
+                            yield b"data: [DONE]\n\n"
+                            return
+                        else:
+                            # No content sent yet — treat as a provider
+                            # failure and try the next candidate.
+                            last_error_type = error_info.get("type", "provider_error")
+                            last_error_msg = error_info.get("message", "Unknown error")
+                            req.strategy.record_failure(
+                                key, model, pname,
+                                last_error_type,
+                                message_hash=req.context_id,
+                            )
+                            # Break out of this provider's inner loop to
+                            # trigger failover to the next provider.
+                            break
+
+                    elif ev_type == "content":
                         content_delta = ev.get("content") or ""
                         yield self._chunk_bytes(
                             chatcmpl_id=chatcmpl_id,
@@ -283,6 +321,12 @@ class ProviderRouter:
                         req.strategy.record_latency(key, pname, model, latency_ms)
                         return
 
+
+                # If we broke out of the inner loop via `break` (error with no
+                # emitted content), check whether `provider_emitted` is still
+                # False. If so, try the next provider.
+                if not provider_emitted:
+                    continue
 
                 # final stop chunk if the stream ended without a finish event
                 yield self._chunk_bytes(

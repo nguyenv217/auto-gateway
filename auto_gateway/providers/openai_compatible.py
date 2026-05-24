@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import logging
 from typing import Any, AsyncIterator, Optional
 
 import httpx
 
 from .base import BaseProvider, ProviderCallResult, BaseProviderDelta
+from ..core.sse_repair import heuristic_json_repair, extract_error_from_payload
+
+logger = logging.getLogger("auto-gateway.openai_compatible")
 
 
 class OpenAICompatibleProvider(BaseProvider):
@@ -138,15 +142,60 @@ class OpenAICompatibleProvider(BaseProvider):
                     try:
                         chunk = _json.loads(data_str)
                     except Exception:
-                        continue
+                        # ----- heuristic repair path -----
+                        # Third-party servers sometimes emit malformed
+                        # JavaScript-style objects (unquoted keys,
+                        # e.g. {error: "overloaded"}) instead of proper SSE.
+                        # We attempt to repair and extract structured info
+                        # rather than silently dropping the chunk.
+                        repaired = heuristic_json_repair(data_str)
 
+                        if repaired is not None:
+                            error_info = extract_error_from_payload(repaired)
+
+                            if error_info is not None:
+                                # Provider emitted an error in a malformed
+                                # format — surface it as a structured delta
+                                # so the downstream SDK can react properly.
+                                logger.warning(
+                                    "Repaired malformed SSE error from upstream: "
+                                    "%s (raw: %.120s)",
+                                    error_info,
+                                    data_str,
+                                )
+                                yield {
+                                    "type": "error",
+                                    "message": error_info["message"],
+                                    "error_type": error_info.get("type", "provider_error"),
+                                    "code": error_info.get("code"),
+                                }
+                                continue
+
+                            # Repaired payload looks like a normal chunk
+                            # (has choices, delta, etc.) — process it below.
+                            logger.debug(
+                                "Repaired malformed SSE chunk as normal data "
+                                "(first 120 chars: %.120s)",
+                                data_str,
+                            )
+                            chunk = repaired
+                        else:
+                            # Unrecoverable — preserve existing behaviour of
+                            # silently dropping the undecodable line.
+                            logger.debug(
+                                "Skipping unparseable SSE data line: %.120s",
+                                data_str,
+                            )
+                            continue
+
+                    # ---- process the chunk (original or repaired) ----
                     choices = chunk.get("choices") or []
                     if not choices:
                         continue
 
                     delta = choices[0].get("delta") or {}
                     content = delta.get("content")
-                    
+
                     # Must use `is not None` to avoid skipping empty string chunks (`""`)
                     if content is not None:
                         yield {"type": "content", "content": content}
@@ -165,7 +214,6 @@ class OpenAICompatibleProvider(BaseProvider):
                     finish_reason = choices[0].get("finish_reason")
                     if finish_reason:
                         yield {"type": "finish", "finish_reason": finish_reason}
-
 
 
 class OpenAIProvider(OpenAICompatibleProvider):
