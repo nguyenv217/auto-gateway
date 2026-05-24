@@ -153,6 +153,7 @@ def create_app(*, router: ProviderRouter, strategy, model_name_default: str = "g
                 async for chunk_bytes in state["router"].route_stream(route_req, chatcmpl_id=chatcmpl_id):
                     yield chunk_bytes
             except AllProvidersExhaustedError as e:
+                import json
                 # For streaming, emit error as a structured error chunk before [DONE]
                 # This provides visibility into the failure while maintaining SSE format
                 err_payload = {
@@ -163,7 +164,7 @@ def create_app(*, router: ProviderRouter, strategy, model_name_default: str = "g
                         "code": e.code,
                     }
                 }
-                yield f"data: {err_payload}\n\n".encode("utf-8")
+                yield f"data: {json.dumps(err_payload)}\n\n".encode("utf-8")
                 yield b"data: [DONE]\n\n"
             except Exception as e:
                 # Catch-all for any other unexpected errors - ensure they also 
@@ -176,7 +177,7 @@ def create_app(*, router: ProviderRouter, strategy, model_name_default: str = "g
                         "code": "internal_error",
                     }
                 }
-                yield f"data: {error_response}\n\n".encode("utf-8")
+                yield f"data: {json.dumps(error_response)}\n\n".encode("utf-8")
                 yield b"data: [DONE]\n\n"
 
         return StreamingResponse(gen(), media_type="text/event-stream")
