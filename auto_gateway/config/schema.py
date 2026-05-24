@@ -10,7 +10,8 @@ class ServerConfig(BaseModel):
     port: int = 8000
     socket_path: str | None = None
     tunnel: Literal["none", "ngrok", "cloudflared"] = "none"
-    api_key: str | None = None 
+    api_key: str | None = None
+
 
 class RouterConfig(BaseModel):
     strategy: Literal["sequential", "adaptive", "bandit"] = "sequential"
@@ -27,13 +28,13 @@ class ProviderBaseConfig(BaseModel):
 class OpenAICompatibleProviderConfig(ProviderBaseConfig):
     type: Literal["openai_compatible"] = "openai_compatible"
     base_url: str
-    api_key: str | list[str] | None = None
+    api_key: str | list[str] | dict[str, str] | None = None
     extra_body: dict[str, Any] = Field(default_factory=dict)
 
 
 class GoogleProviderConfig(ProviderBaseConfig):
     type: Literal["google"] = "google"
-    api_key: str | list[str]
+    api_key: str | list[str] | dict[str, str]
 
 
 ProviderConfig = OpenAICompatibleProviderConfig | GoogleProviderConfig
@@ -44,4 +45,3 @@ class GatewayConfig(BaseModel):
     router: RouterConfig = Field(default_factory=RouterConfig)
     providers: list[ProviderConfig] = Field(default_factory=list)
     extra: dict[str, Any] = Field(default_factory=dict)
-

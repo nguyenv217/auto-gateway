@@ -78,7 +78,7 @@ def create_app(*, router: ProviderRouter, strategy, model_name_default: str = "g
         payload_dict = payload.model_dump(exclude_unset=True)
         extra_body = {
             k: v for k, v in payload_dict.items() 
-            if k not in {"model", "messages", "tools", "tool_choice", "stream"}
+            if k not in {"model", "messages", "tools", "tool_choice", "stream", "provider", "alias"}
         }
 
         raw_model = payload.model.strip() if payload.model else None
@@ -97,7 +97,8 @@ def create_app(*, router: ProviderRouter, strategy, model_name_default: str = "g
 
         route_req = RouteRequest(
             strategy=state["strategy"],
-            provider=None,
+            provider=payload.provider,
+            alias=payload.alias,
             # If the requested model isn't supported by any provider, we still
             # want failover to try available providers.
             models=requested_models,

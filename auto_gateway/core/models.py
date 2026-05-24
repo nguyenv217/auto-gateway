@@ -18,6 +18,8 @@ class ChatCompletionRequest(BaseModel):
     stream: bool = False
     tools: Optional[list[dict[str, Any]]] = None
     tool_choice: Optional[Any] = None
+    provider: Optional[str] = None
+    alias: Optional[str] = None
 
     model_config = ConfigDict(extra="allow")
 

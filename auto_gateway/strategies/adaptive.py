@@ -255,6 +255,7 @@ class AdaptiveStrategy(BaseStrategy):
         provider: str | None,
         models: list[str] | None,
         shuffle: bool,
+        alias: str | None = None,
         message_hash: str | None = None,
         is_new_session: bool = False,
     ) -> Iterator[tuple[str, str, str | None, list[str]]]:
@@ -263,7 +264,7 @@ class AdaptiveStrategy(BaseStrategy):
         with self._lock:
             if is_new_session:
                 self._on_new_session()
-            candidates = self._build_candidates(provider, models, error_container, message_hash)
+            candidates = self._build_candidates(provider, models, error_container, message_hash, alias=alias)
 
         if not candidates:
             return iter([])
@@ -277,7 +278,7 @@ class AdaptiveStrategy(BaseStrategy):
         for c in weighted_candidates:
             yield c["pname"], c["model"], c["key"], c["features"]
 
-    def _build_candidates(self, provider, models, error_container, message_hash: str | None = None):
+    def _build_candidates(self, provider, models, error_container, message_hash: str | None = None, alias: str | None = None):
         candidates = []
 
         has_cloudflare = [m in self.all_models.get("cloudflare", {}) for m in models] if models else []
@@ -304,7 +305,13 @@ class AdaptiveStrategy(BaseStrategy):
                 if models and not self.models_match(models, mname):
                     continue
 
-                keys = prov.get_keys() or [None]
+                keys = prov.get_keys_for_alias(alias)
+                # If alias was specified and returned empty, skip this provider
+                if alias is not None and not keys:
+                    continue
+                if not keys:
+                    keys = [None]
+
                 for key in keys:
                     key_hash = self._hash_key(pname, mname, key)
 
@@ -600,4 +607,3 @@ class AdaptiveStrategy(BaseStrategy):
                 )
         except Exception:
             pass
-

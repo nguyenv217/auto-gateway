@@ -19,6 +19,7 @@ class SequentialStrategy(BaseStrategy):
         provider: str | None,
         models: list[str] | None,
         shuffle: bool,
+        alias: str | None = None,
         message_hash: str | None = None,
         is_new_session: bool = False,
     ) -> Iterator[tuple[str, str, str | None, list[str]]]:
@@ -34,9 +35,13 @@ class SequentialStrategy(BaseStrategy):
             prov = self.providers.get(pname)
             if not prov:
                 continue
-            keys = prov.get_keys().copy()
+            keys = prov.get_keys_for_alias(alias).copy()
             if shuffle:
                 random.shuffle(keys)
+            # If alias was specified and returned empty, skip this provider entirely.
+            # The [None] fallback only makes sense when no alias was requested.
+            if alias is not None and not keys:
+                continue
             if not keys:
                 keys = [None]
 
@@ -123,5 +128,3 @@ class SequentialStrategy(BaseStrategy):
             return models[:] if models else [""]
 
         return available
-
-

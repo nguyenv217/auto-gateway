@@ -34,6 +34,7 @@ class UCBBanditStrategy(BaseStrategy):
         provider: str | None,
         models: list[str] | None,
         shuffle: bool,
+        alias: str | None = None,
         message_hash: str | None = None,
         is_new_session: bool = False,
     ) -> Iterator[tuple[str, str, str | None, list[str]]]:
@@ -45,12 +46,19 @@ class UCBBanditStrategy(BaseStrategy):
                 if provider and pname != provider:
                     continue
                 
+                keys = prov.get_keys_for_alias(alias)
+                # If alias was specified and returned empty, skip this provider
+                if alias is not None and not keys:
+                    continue
+                if not keys:
+                    keys = [None]
+
                 provider_models = self.all_models.get(pname, {})
                 for mname, features in provider_models.items():
                     if models and not self.models_match(models, mname):
                         continue
                     
-                    for key in (prov.get_keys() or [None]):
+                    for key in keys:
                         arm_hash = self._hash_arm(pname, mname, key)
                         
                         # Soft circuit breaker: heavily penalize if recent failures

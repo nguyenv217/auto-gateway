@@ -25,8 +25,9 @@ class OpenAICompatibleProvider(BaseProvider):
         keys: list[str] | None,
         model_configs: dict[str, list[str]],
         extra: Optional[dict[str, Any]] = None,
+        key_aliases: dict[str, str] | None = None,
     ):
-        super().__init__(name=name, keys=keys, models=model_configs)
+        super().__init__(name=name, keys=keys, models=model_configs, key_aliases=key_aliases)
         self.base_url = base_url.rstrip("/")
         self.extra = extra or {}
 
@@ -223,6 +224,7 @@ class OpenAIProvider(OpenAICompatibleProvider):
         model_configs: dict[str, list[str]],
         base_url: str = "https://api.openai.com/v1",
         extra: Optional[dict[str, Any]] = None,
+        key_aliases: dict[str, str] | None = None,
     ):
         super().__init__(
             name="openai",
@@ -230,4 +232,5 @@ class OpenAIProvider(OpenAICompatibleProvider):
             keys=keys,
             model_configs=model_configs,
             extra=extra,
+            key_aliases=key_aliases,
         )

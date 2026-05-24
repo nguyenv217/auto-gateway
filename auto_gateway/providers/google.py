@@ -17,9 +17,14 @@ class GoogleProvider(BaseProvider):
       non-streaming generation until proper async streaming is available.
     """
 
-
-    def __init__(self, name: str = "google", keys: list[str] | None = None, model_configs: dict[str, list[str]] | None = None):
-        super().__init__(name=name, keys=keys, models=model_configs or {})
+    def __init__(
+        self,
+        name: str = "google",
+        keys: list[str] | None = None,
+        model_configs: dict[str, list[str]] | None = None,
+        key_aliases: dict[str, str] | None = None,
+    ):
+        super().__init__(name=name, keys=keys, models=model_configs or {}, key_aliases=key_aliases)
 
         self._file_cache: dict[str, tuple[Any, str]] = {}
 

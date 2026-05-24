@@ -469,7 +469,18 @@ async def test_non_stream_provider_selected_by_name():
     all_models = {p.name: p.get_all_models() for p in providers.values()}
     strategy = SequentialStrategy(providers, all_models)
     router = ProviderRouter(providers)
-    req = RouteRequest(strategy=strategy, provider="prov2", models=None, timeout=15.0, shuffle=False, tools=None, tool_choice=None, extra_body={}, messages=[{"role": "user", "content": "hello"}])
+    req = RouteRequest(
+        strategy=strategy,
+        provider="prov2",
+        alias=None,
+        models=None,
+        timeout=15.0,
+        shuffle=False,
+        tools=None,
+        tool_choice=None,
+        extra_body={},
+        messages=[{"role": "user", "content": "hello"}],
+    )
     result = await router.route(req)
     assert result["text"] == "dummy-prov2: hello"
 
@@ -499,7 +510,18 @@ async def test_route_shuffle():
     all_models = {p.name: p.get_all_models() for p in providers.values()}
     strategy = SequentialStrategy(providers, all_models)
     router = ProviderRouter(providers)
-    req = RouteRequest(strategy=strategy, provider=None, models=None, timeout=15.0, shuffle=True, tools=None, tool_choice=None, extra_body={}, messages=[{"role": "user", "content": "test shuffle"}])
+    req = RouteRequest(
+        strategy=strategy,
+        provider=None,
+        alias=None,
+        models=None,
+        timeout=15.0,
+        shuffle=True,
+        tools=None,
+        tool_choice=None,
+        extra_body={},
+        messages=[{"role": "user", "content": "test shuffle"}],
+    )
     result = await router.route(req)
     assert result["text"] is not None
     assert "dummy-" in result["text"]

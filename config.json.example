@@ -2,7 +2,7 @@
   "server": {
     "host": "127.0.0.1",
     "port": 8000,
-    "api_key": "my-awesome-api-key"
+    "api_key": "my-awesome-api-key",
     "socket_path": null,
     "tunnel": "cloudflared"
   },
@@ -25,7 +25,20 @@
       "type": "openai_compatible",
       "name": "openai_failover",
       "base_url": "https://api.openai.com/v1",
-      "api_key": ["${OPENAI_API_KEY}",...],
+      "api_key": ["${OPENAI_API_KEY}", "..."],
+      "models": {
+        "gpt-4o-mini": []
+      },
+      "extra_body": {}
+    },
+    {
+      "type": "openai_compatible",
+      "name": "openai_aliased",
+      "base_url": "https://api.openai.com/v1",
+      "api_key": {
+        "us-east": "${OPENAI_KEY_US_EAST}",
+        "us-west": "${OPENAI_KEY_US_WEST}"
+      },
       "models": {
         "gpt-4o-mini": []
       },
@@ -44,6 +57,3 @@
     "cloudflared_binary": "cloudflared"
   }
 }
-
-
-

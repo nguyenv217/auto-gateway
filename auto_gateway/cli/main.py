@@ -59,14 +59,21 @@ def _build_providers(config) -> tuple[dict[str, BaseProvider], dict[str, dict[st
     all_models: dict[str, dict[str, list[str]]] = {}
 
     for p in config.providers:
-        # Normalize api_key to a list to support rotation
+        # Normalize api_key: it can be str, list[str], dict[str, str], or None
         raw_keys = p.api_key
-        if isinstance(raw_keys, list):
+        if isinstance(raw_keys, dict):
+            # New format: {"alias1": "key1", "alias2": "key2"}
+            keys_list = list(raw_keys.values())
+            key_aliases = raw_keys
+        elif isinstance(raw_keys, list):
             keys_list = raw_keys
+            key_aliases = None
         elif raw_keys is not None:
             keys_list = [raw_keys]
+            key_aliases = None
         else:
             keys_list = [None]
+            key_aliases = None
 
         if p.type == "openai_compatible":
             prov = OpenAICompatibleProvider(
@@ -75,12 +82,14 @@ def _build_providers(config) -> tuple[dict[str, BaseProvider], dict[str, dict[st
                 keys=keys_list,
                 model_configs=p.models,
                 extra={"extra_body": getattr(p, "extra_body", {})},
+                key_aliases=key_aliases,
             )
         elif p.type == "google":
             prov = GoogleProvider(
                 name=p.name,
                 keys=keys_list,
                 model_configs=p.models,
+                key_aliases=key_aliases,
             )
         else:
             raise ValueError(f"Unsupported provider type: {p.type}")

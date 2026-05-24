@@ -19,6 +19,7 @@ from .exceptions import classify_exception, AllProvidersExhaustedError
 class RouteRequest:
     strategy: BaseStrategy
     provider: str | None
+    alias: str | None
     models: list[str] | None
     timeout: float
     shuffle: bool
@@ -42,6 +43,7 @@ class ProviderRouter:
             req.provider,
             req.models,
             req.shuffle,
+            alias=req.alias,
             message_hash=req.context_id,
             is_new_session=True,
         ):
@@ -156,6 +158,7 @@ class ProviderRouter:
             req.provider,
             req.models,
             req.shuffle,
+            alias=req.alias,
             message_hash=req.context_id,
             is_new_session=True,
         ):

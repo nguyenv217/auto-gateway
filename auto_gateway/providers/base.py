@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from typing import Any, TypedDict, AsyncIterator, Literal, Optional
 
 
-
 class ProviderCallResult(TypedDict):
     text: str | None
     reasoning: str | None
@@ -30,11 +29,17 @@ class BaseProviderDelta(TypedDict, total=False):
 
 
 class BaseProvider(ABC):
-    def __init__(self, name: str, keys: list[str] | None, models: dict[str, list[str]]):
-
+    def __init__(
+        self,
+        name: str,
+        keys: list[str] | None,
+        models: dict[str, list[str]],
+        key_aliases: dict[str, str] | None = None,
+    ):
         self.name = name
         self._keys = keys or []
         self._models = models or {}
+        self._key_aliases = key_aliases or {}
 
     def get_keys(self) -> list[str]:
         return list(self._keys)
@@ -47,6 +52,20 @@ class BaseProvider(ABC):
 
     def get_sticky_id(self, key: str | None) -> str:
         return (key or "")[0:8] or "default"
+
+    def get_keys_for_alias(self, alias: str | None) -> list[str]:
+        """Resolve keys for a given alias.
+        
+        If alias is None, returns all keys (existing rotation behavior).
+        If alias is specified, looks up the matching key in key_aliases.
+        Returns [key] if found, else [] (provider skipped).
+        """
+        if alias is None:
+            return list(self._keys)
+        key = self._key_aliases.get(alias)
+        if key is not None:
+            return [key]
+        return []
 
     @abstractmethod
     async def call(
@@ -90,6 +109,3 @@ class BaseProvider(ABC):
         if text:
             yield {"type": "content", "content": text}
         yield {"type": "finish", "finish_reason": "stop"}
-
-
-
