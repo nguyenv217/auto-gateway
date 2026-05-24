@@ -13,7 +13,7 @@ logger = logging.getLogger("auto-gateway")
 from ..providers.base import BaseProvider, ProviderCallResult
 from ..strategies.base import BaseStrategy
 from .router_tool_calls_helpers import chunk_bytes_tool_calls
-from .exceptions import classify_exception
+from .exceptions import classify_exception, AllProvidersExhaustedError
 
 @dataclass(frozen=True)
 class RouteRequest:
@@ -126,7 +126,11 @@ class ProviderRouter:
                 }
 
         if last is None:
-            raise RuntimeError("No providers available")
+            raise AllProvidersExhaustedError(
+                message="All providers exhausted",
+                error_type="rate_limit_error",
+                code="rate_limit_exceeded",
+            )
         return last
 
     async def route_stream(
@@ -327,22 +331,13 @@ class ProviderRouter:
 
         _ = time.perf_counter() - start
 
-        # No provider succeeded: emit a final SSE message and end with [DONE]
-        # so clients never attempt to continue reading an invalid/empty stream.
-        if not any_chunk_emitted:
-            model_out = req.models[0] if req.models else "gateway"
-            err_txt = last_error_msg or f"All providers exhausted ({last_error_type or 'unknown'})"
-            yield self._chunk_bytes(
-                chatcmpl_id=chatcmpl_id,
-                created=int(time.time()),
-                model=model_out,
-                content_delta=err_txt,
-                finish_reason="stop",
-                role_delta=True,
-            )
-
-        yield b"data: [DONE]\n\n"
-        return
+        # No provider succeeded: raise AllProvidersExhaustedError so the server
+        # can return a proper OpenAI-compatible HTTP 429 error response
+        raise AllProvidersExhaustedError(
+            message=last_error_msg or "All providers exhausted",
+            error_type="rate_limit_error",
+            code="rate_limit_exceeded",
+        )
 
 
     def _filter_messages(self, messages: list[dict[str, Any]], features: list[str]) -> list[dict[str, Any]]:

@@ -1,6 +1,7 @@
 import httpx
 from ..strategies.adaptive import ErrorType
 
+
 def classify_exception(e: Exception) -> ErrorType:
     if isinstance(e, httpx.HTTPStatusError):
         code = e.response.status_code
@@ -20,3 +21,35 @@ def classify_exception(e: Exception) -> ErrorType:
         return ErrorType.TIMEOUT
         
     return ErrorType.UNKNOWN
+
+
+class AllProvidersExhaustedError(Exception):
+    """Exception raised when all providers fail to handle a request.
+    
+    This exception is designed to be converted to an OpenAI-compatible error response
+    that is compatible with openai.RateLimitError for proper SDK handling.
+    """
+    
+    def __init__(
+        self,
+        message: str = "All providers exhausted",
+        error_type: str = "rate_limit_error",
+        code: str = "rate_limit_exceeded",
+        param: str | None = None,
+    ):
+        super().__init__(message)
+        self.message = message
+        self.error_type = error_type
+        self.code = code
+        self.param = param
+    
+    def to_openai_error_response(self) -> dict[str, any]:
+        """Convert to OpenAI-compatible error response format."""
+        return {
+            "error": {
+                "message": self.message,
+                "type": self.error_type,
+                "param": self.param,
+                "code": self.code,
+            }
+        }

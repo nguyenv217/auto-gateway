@@ -5,7 +5,7 @@ import uuid
 from typing import Any, AsyncIterator
 
 from fastapi import FastAPI, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi import Depends, HTTPException, status
@@ -16,6 +16,7 @@ from .models import (
     ChatMessage,
 )
 from .router import ProviderRouter, RouteRequest
+from .exceptions import AllProvidersExhaustedError
 
 security = HTTPBearer(auto_error=False)
 
@@ -112,34 +113,70 @@ def create_app(*, router: ProviderRouter, strategy, model_name_default: str = "g
 
 
         if not payload.stream:
-            res = await state["router"].route(route_req)
-            now = int(time.time())
+            try:
+                res = await state["router"].route(route_req)
+                now = int(time.time())
 
-            msg = ChatMessage(
-                role="assistant",
-                content=res.get("text") or "",
-                tool_calls=res.get("tool_calls"),
-            )
-            out = ChatCompletionResponse(
-                id=f"chatcmpl_{uuid.uuid4().hex}",
-                created=now,
-                model=payload.model,
-                choices=[
-                    {
-                        "index": 0,
-                        "message": msg,
-                        "finish_reason": "stop",
-                    }
-                ],
-                usage=res.get("usage"),
-            )
-            return out.model_dump()
+                msg = ChatMessage(
+                    role="assistant",
+                    content=res.get("text") or "",
+                    tool_calls=res.get("tool_calls"),
+                )
+                out = ChatCompletionResponse(
+                    id=f"chatcmpl_{uuid.uuid4().hex}",
+                    created=now,
+                    model=payload.model,
+                    choices=[
+                        {
+                            "index": 0,
+                            "message": msg,
+                            "finish_reason": "stop",
+                        }
+                    ],
+                    usage=res.get("usage"),
+                )
+                return out.model_dump()
+            except AllProvidersExhaustedError as e:
+                # Return proper OpenAI-compatible error response with HTTP 429
+                # This is compatible with openai.RateLimitError exception
+                return JSONResponse(
+                    status_code=429,
+                    content=e.to_openai_error_response(),
+                )
 
         async def gen() -> AsyncIterator[bytes]:
             # OpenAI-compatible SSE stream (router yields already-packed SSE bytes).
             chatcmpl_id = f"chatcmpl_{uuid.uuid4().hex}"
-            async for chunk_bytes in state["router"].route_stream(route_req, chatcmpl_id=chatcmpl_id):
-                yield chunk_bytes
+            
+            try:
+                async for chunk_bytes in state["router"].route_stream(route_req, chatcmpl_id=chatcmpl_id):
+                    yield chunk_bytes
+            except AllProvidersExhaustedError as e:
+                # For streaming, emit error as a structured error chunk before [DONE]
+                # This provides visibility into the failure while maintaining SSE format
+                err_payload = {
+                    "error": {
+                        "message": e.message,
+                        "type": e.error_type,
+                        "param": e.param,
+                        "code": e.code,
+                    }
+                }
+                yield f"data: {err_payload}\n\n".encode("utf-8")
+                yield b"data: [DONE]\n\n"
+            except Exception as e:
+                # Catch-all for any other unexpected errors - ensure they also 
+                # fall through as proper SSE error format
+                error_response = {
+                    "error": {
+                        "message": str(e),
+                        "type": "internal_error",
+                        "param": None,
+                        "code": "internal_error",
+                    }
+                }
+                yield f"data: {error_response}\n\n".encode("utf-8")
+                yield b"data: [DONE]\n\n"
 
         return StreamingResponse(gen(), media_type="text/event-stream")
 
