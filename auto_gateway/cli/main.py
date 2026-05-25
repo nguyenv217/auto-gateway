@@ -102,11 +102,10 @@ def _build_providers(config) -> tuple[dict[str, BaseProvider], dict[str, dict[st
 @app.command()
 def start(
     config: str | None = typer.Option(None, "--config", help="Path to config.json (uses global config if omitted)"),
-    
     host: str | None = typer.Option(None, "--host"),
-
     port: int | None = typer.Option(None, "--port"),
     tunnel: str | None = typer.Option(None, "--tunnel", help="none|ngrok|cloudflared (public URL optional)"),
+    name: str | None = typer.Option(None, "--name", "-n", help="Alias of a global config defined with `auto-gateway save_global --name\-n`"),
     log_level: str = typer.Option("INFO", "--log-level", help="Logging level (DEBUG, INFO, WARNING, ERROR)"),
 ):
     """Start config-driven gateway."""
@@ -124,7 +123,7 @@ def start(
     logger.info("Initializing configuration...")
     if config is None:
         try:
-            cfg = load_global_config()
+            cfg = load_global_config(name)
             logger.info("Loaded global config from ~/.auto-gateway/config.json")
         except FileNotFoundError as e:
             typer.echo(f"Error: {e}", err=True)
@@ -201,9 +200,10 @@ def check(
 @app.command()
 def save_global(
     config: str = typer.Option(..., "--config", help="Path to config.json to save as global"),
+    alias: str | None = typer.Option(None, "--name", "-n", help="Alias to be used globally with --name/-n"),
 ):
     """Save the specified config as the global default config."""
-    save_global_config(config)
+    save_global_config(config, alias)
     typer.echo(f"Global config saved to ~/.auto-gateway/config.json")
 
 
