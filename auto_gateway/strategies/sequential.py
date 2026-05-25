@@ -20,6 +20,7 @@ class SequentialStrategy(BaseStrategy):
         models: list[str] | None,
         shuffle: bool,
         alias: str | None = None,
+        strict_alias: bool = True,
         message_hash: str | None = None,
         is_new_session: bool = False,
     ) -> Iterator[tuple[str, str, str | None, list[str]]]:
@@ -35,15 +36,28 @@ class SequentialStrategy(BaseStrategy):
             prov = self.providers.get(pname)
             if not prov:
                 continue
-            keys = prov.get_keys_for_alias(alias).copy()
+            all_keys = prov.get_keys().copy()
             if shuffle:
-                random.shuffle(keys)
-            # If alias was specified and returned empty, skip this provider entirely.
-            # The [None] fallback only makes sense when no alias was requested.
-            if alias is not None and not keys:
-                continue
-            if not keys:
-                keys = [None]
+                random.shuffle(all_keys)
+
+            if alias is None or not all_keys:
+                resolved_keys = all_keys if all_keys else [None]
+            else:
+                alias_key = prov.get_keys_for_alias(alias)
+                if alias_key:
+                    # strict_alias=True: only the aliased key is tried (no fallback)
+                    # strict_alias=False: aliased key first, then all other keys as fallback
+                    if strict_alias:
+                        resolved_keys = alias_key
+                    else:
+                        resolved_keys = alias_key + [k for k in all_keys if k not in alias_key]
+                else:
+                    if strict_alias:
+                        continue
+                    else:
+                        resolved_keys = all_keys
+
+            keys = resolved_keys
 
             targeted_models = self._prepare_models(pname, models, shuffle)
             for mname in targeted_models:

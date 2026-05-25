@@ -28,6 +28,7 @@ class RouteRequest:
     extra_body: dict[str, Any]
     messages: list[dict[str, Any]]
     context_id: str | None = None
+    strict_alias: bool = True
 
 
 class ProviderRouter:
@@ -44,6 +45,7 @@ class ProviderRouter:
             req.models,
             req.shuffle,
             alias=req.alias,
+            strict_alias=req.strict_alias,
             message_hash=req.context_id,
             is_new_session=True,
         ):
@@ -159,6 +161,7 @@ class ProviderRouter:
             req.models,
             req.shuffle,
             alias=req.alias,
+            strict_alias=req.strict_alias,
             message_hash=req.context_id,
             is_new_session=True,
         ):

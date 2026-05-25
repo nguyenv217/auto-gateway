@@ -99,6 +99,7 @@ def create_app(*, router: ProviderRouter, strategy, model_name_default: str = "g
             strategy=state["strategy"],
             provider=payload.provider,
             alias=payload.alias,
+            strict_alias=payload.strict_alias,
             # If the requested model isn't supported by any provider, we still
             # want failover to try available providers.
             models=requested_models,

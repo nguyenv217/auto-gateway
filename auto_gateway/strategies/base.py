@@ -14,6 +14,7 @@ class BaseStrategy(ABC):
         models: list[str] | None,
         shuffle: bool,
         alias: str | None = None,
+        strict_alias: bool = True,
         message_hash: str | None = None,
         is_new_session: bool = False,
     ) -> Iterator[tuple[str, str, str | None, list[str]]]:

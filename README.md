@@ -86,11 +86,11 @@ pip install -e ".[dev]"
 │                 │  Strategy:       │                    │
 │                 │  * Sequential    │                    │
 │                 │  * Adaptive      │                    │
-                  │  * Bandit/UCB1   │                    │
+│                 │  * Bandit/UCB1   │                    │
 │                 └──────────┬───────┘                    │
-│                            │                            │                      
+│                            │                            │
 └────────────────────────────┼────────────────────────────┘
-                             │      
+                             │
 ┌────────────────────────────▼─────────────────────────────┐
 │                         Providers                        │
 │  ┌─────────────────┐  ┌─────────────────┐                │
@@ -122,7 +122,7 @@ pip install -e ".[dev]"
   "server": {
     "host": "127.0.0.1",          // Bind address
     "port": 8000,                  // Port number
-    "api_key": "my-awesome-api-key", // Server auth key (via `Authrorization: Bearer`)
+    "api_key": "my-awesome-api-key", // Server auth key (via `Authorization: Bearer`)
     "socket_path": null,           // UNIX socket path (optional, overrides host:port)
     "tunnel": "none"               // "none" | "ngrok" | "cloudflared"
   },
@@ -137,7 +137,7 @@ pip install -e ".[dev]"
       "base_url": "http://localhost:8001/v1",  // API base URL
       "api_key": null,              // API key (or env var reference)
       "models": {                   // Model name -> features
-        "gpt-4o-mini": ["vision", "tool_calls"], // `vision` -> supports images; `tool_calls` -> support tool callingg
+        "gpt-4o-mini": ["vision", "tool_calls"],
         "gpt-4o": []
       },
       "extra_body": {}              // Extra params sent with every request
@@ -145,7 +145,7 @@ pip install -e ".[dev]"
     {
       "type": "google",
       "name": "gemini",
-      "api_key": ["GOOGLE_API_KEY_1", "GOOGLE_API_KEY_2}", ...],      
+      "api_key": ["GOOGLE_API_KEY_1", "GOOGLE_API_KEY_2", ...],
       "models": {
         "gemini-1.5-flash": ["vision"]
       }
@@ -159,6 +159,36 @@ pip install -e ".[dev]"
   }
 }
 ```
+
+### API Key Formats
+
+The `api_key` field supports three formats:
+
+| Format | Example | Behavior |
+|--------|---------|----------|
+| **String** | `"sk-abc123"` | Single key — used for every request |
+| **List** | `["sk-abc", "sk-def"]` | Keys are rotated for load balancing / failover (strategy-dependent) |
+| **Dict (aliases)** | `{"us-east": "sk-abc", "us-west": "sk-def"}` | Keys are mapped to named aliases for per-request key selection |
+
+#### Dict / Alias Format
+
+When `api_key` is a dict, each key-value pair maps an **alias** to an **actual API key**:
+
+```json
+{
+  "type": "openai_compatible",
+  "name": "my_provider",
+  "base_url": "https://api.openai.com/v1",
+  "api_key": {
+    "primary": "sk-abc123-primary-key",
+    "secondary": "sk-def456-fallback-key",
+    "customer_a": "sk-ghi789-customer-a-key"
+  },
+  "models": { "gpt-4o-mini": [] }
+}
+```
+
+This allows clients to specify which key should be used on a per-request basis (see [API Reference: provider & alias params](#alias-feature)).
 
 ### Provider types
 
@@ -174,9 +204,9 @@ Features are strings that enable message filtering in the router:
 | Feature | Effect |
 |---------|--------|
 | `vision` | Image content (`image_url`) is forwarded to provider |
-| `media` | Media content is forwarded for google (Built-in Coming Soon) |
-| `video_vision` | Video content is forwarded (Built-in Coming Soon) |
-| `tool_calls` | Specify that this model support tool calling |
+| `media` | Media content is forwarded |
+| `video_vision` | Video content is forwarded |
+| `tool_calls` | Specify that this model supports tool calling |
 | *(none)* | Image/media/video content is stripped from messages. No tool calling. |
 
 ---
@@ -201,7 +231,7 @@ OpenAI-compatible chat completions endpoint.
 }
 ```
 
-If `api_key` is specified config.json's `server` config, pass header `Authorization: Bearer $api_key`.
+If `api_key` is specified in config.json's `server` config, pass header `Authorization: Bearer $api_key`.
 
 #### Response (non-streaming)
 
@@ -229,39 +259,6 @@ If `api_key` is specified config.json's `server` config, pass header `Authorizat
 }
 ```
 
-### `GET /v1/models`
-
-Requires Authorization header if `api_key` is configured for server in config.json.
-
-#### Response
-```json
-{
-  "object": "list",
-  "data": [
-    {
-      "id": "gpt-4o-mini",
-      "object": "model",
-      "created": 1700000000,
-      "owned_by": "openai"
-    },
-    {
-      "id": "openai/gpt-oss-120b",
-      "object": "model",
-      "created": 1700000000,
-      "owned_by": "groq"
-    }
-  ]
-}
-```
-
-### `GET /health`
-
-#### Response
-{
-  "status": "ok",
-  "providers": 2
-}
-
 #### Response (streaming)
 
 Server-Sent Events stream:
@@ -274,6 +271,93 @@ data: {"id":"chatcmpl_xyz","object":"chat.completion.chunk","created":1700000000
 data: {"id":"chatcmpl_xyz","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
 
 data: [DONE]
+```
+
+### Alias Feature
+
+When providers are configured with `api_key` as a **dict** (see [Configuration: API Key Formats](#api-key-formats)), you can specify which alias/key to use on each request by adding optional `provider` and `alias` fields to the request body:
+
+```json
+{
+  "model": "gpt-4o-mini",
+  "messages": [{"role": "user", "content": "Hello!"}],
+  "provider": "my_provider",
+  "alias": "primary"
+}
+```
+
+| Field | Effect |
+|-------|--------|
+| `provider: string` | If set, only the named provider is considered. Skips all other providers. |
+| `alias: string` | If set, only the key mapped to this alias is used for the chosen provider(s). |
+| `strict_alias: bool` | Default `true`. When `true`, only the aliased key is tried — no fallback to other keys in the same provider. When `false`, if the aliased key fails, the strategy falls back to other keys from the same provider before moving to the next provider. |
+
+#### Behavior Details
+
+1. **`provider` only** — routes exclusively to that provider (with all its keys available for rotation/failover)
+2. **`alias` only** — only providers that have a key registered under that alias are considered; within each matching provider, only the specific aliased key is used (subject to `strict_alias`)
+3. **`provider` + `alias`** — routes to the specific provider and pins to the exact key for that alias
+4. **Neither** — default behavior: all providers and all keys are eligible (original behavior)
+
+#### Failover Behavior with Alias
+
+- **Within the same provider**: when an alias is specified with `strict_alias=true` (default), the strategy yields exactly **one key** per provider. If that key fails, the router does NOT try other keys within the same provider — it moves to the next candidate provider (if any).
+- **With `strict_alias=false`**: if the aliased key fails, the strategy falls back to the other keys of the same provider before moving to the next provider.
+- **Across providers**: if multiple providers define the **same alias name**, the router will try them in strategy order. If the first provider's aliased key fails, the next provider with the same alias is attempted.
+- **If no provider has the alias**: the request results in `AllProvidersExhaustedError` (no targets matched).
+
+Example: two providers with the same alias:
+
+```json
+// config.json
+{
+  "providers": [
+    {
+      "name": "fallback_provider",
+      "type": "openai_compatible",
+      "base_url": "https://api.openai.com/v1",
+      "api_key": { "primary": "sk-abc" },
+      "models": { "gpt-4o-mini": [] }
+    },
+    {
+      "name": "backup_provider",
+      "type": "openai_compatible",
+      "base_url": "https://backup.example.com/v1",
+      "api_key": { "primary": "sk-xyz" },
+      "models": { "gpt-4o-mini": [] }
+    }
+  ]
+}
+```
+
+```json
+// Request – if fallback_provider fails, backup_provider is tried next
+{ "model": "gpt-4o-mini", "messages": [...], "alias": "primary" }
+```
+
+### `GET /v1/models`
+
+Returns list of available models aggregated from all providers.
+
+#### Response
+```json
+{
+  "object": "list",
+  "data": [
+    { "id": "gpt-4o-mini", "object": "model", "created": 1700000000, "owned_by": "openai" },
+    { "id": "gemini-1.5-flash", "object": "model", "created": 1700000000, "owned_by": "google" }
+  ]
+}
+```
+
+### `GET /health`
+
+#### Response
+```json
+{
+  "status": "ok",
+  "providers": 2
+}
 ```
 
 #### Error handling
@@ -313,6 +397,14 @@ Configuration: `"strategy": "adaptive"`
 
 > **Note**: Adaptive strategy is ported from the `callai` project and may have additional configuration knobs exposed in the future.
 
+### Bandit / UCB1 Strategy
+
+`auto_gateway/strategies/bandit.py`
+
+Multi-armed bandit routing using the UCB1 algorithm. Mathematically balances exploring under-tested keys/providers against exploiting those with historical high reliability and low latency.
+
+Configuration: `"strategy": "bandit"`
+
 ---
 
 ## Provider Architecture
@@ -338,11 +430,11 @@ All providers extend `BaseProvider` (`providers/base.py`):
 
 ```python
 class BaseProvider(ABC):
-    def __init__(self, name: str, keys: list[str] | None, models: dict[str, list[str]]):
+    def __init__(self, name: str, keys: list[str] | None, models: dict[str, list[str]], key_aliases: dict[str, str] | None = None):
         ...
 
     @abstractmethod
-    async def call(self, *, key: str, model: str, messages: list[ChatMessage], timeout: float, tools: Optional[list[dict[str, Any]]] = None, tool_choice: str, extra_body: dict[str, Any] =None) -> ProviderCallResult:
+    async def call(self, *, key: str, model: str, messages: list[ChatMessage], timeout: float, tools: Optional[list[dict[str, Any]]] = None, tool_choice: str, extra_body: dict[str, Any] = None) -> ProviderCallResult:
         """Non-streaming call. Returns ProviderCallResult TypedDict."""
 
     async def call_stream(self, *, key, model, messages, timeout, tools, tool_choice, extra_body=None) -> AsyncIterator[BaseProviderDelta]:
@@ -444,7 +536,7 @@ auto-gateway check --config config.json
 
 ### `save-global`
 
-Save your specified configuration to ~/.auto-gateway/config.json. 
+Save your specified configuration to ~/.auto-gateway/config.json.
 
 ```bash
 auto-gateway save-global --config config.json
@@ -483,6 +575,7 @@ auto-gateway/
 │   │   ├── router.py            # ProviderRouter with route/route_stream
 │   │   ├── router_tool_calls_helpers.py  # Tool call SSE chunking
 │   │   ├── router_toolcalls_patch.py     # Re-exports
+│   │   ├── sse_repair.py        # SSE stream repair utilities
 │   │   └── server.py            # FastAPI application setup
 │   ├── network/
 │   │   ├── hosting.py           # start_ngrok, start_cloudflared, start_tunnel
@@ -496,16 +589,18 @@ auto-gateway/
 │   │   └── registry.py          # Provider factory registry
 │   └── strategies/
 │       ├── adaptive.py          # Health-aware routing
+│       ├── bandit.py            # UCB1 bandit routing
 │       ├── base.py              # BaseStrategy ABC
 │       └── sequential.py        # Ordered rotation
 ├── tests/
-│   └── test_smoke_server.py     # End-to-end smoke test
-├── auto_gateway/
-│   └── tests/
-│       ├── test_comprehensive_api.py           # 19 comprehensive tests
-│       ├── test_openai_streaming_delta_shapes.py # SSE delta validation
-│       ├── test_streaming_and_failover.py      # Streaming + failover
-│       └── test_tunnel_url_parsing.py          # Cloudflared URL parsing
+│   ├── test_alias_feature.py              # 24 alias tests
+│   ├── test_comprehensive_api.py          # 19 comprehensive tests
+│   ├── test_openai_streaming_delta_shapes.py # SSE delta validation
+│   ├── test_simple_smoke.py
+│   ├── test_smoke_server.py               # End-to-end smoke test
+│   ├── test_sse_repair.py                 # SSE repair tests
+│   ├── test_streaming_and_failover.py      # Streaming + failover
+│   └── test_tunnel_url_parsing.py          # Cloudflared URL parsing
 ├── config.json.example
 ├── pyproject.toml
 └── README.md
@@ -561,7 +656,7 @@ class MyStrategy(BaseStrategy):
         self.providers = providers
         self.all_models = all_models
 
-    def generate_targets(self, provider, models, shuffle, message_hash=None, is_new_session=False):
+    def generate_targets(self, provider, models, shuffle, alias=None, message_hash=None, is_new_session=False):
         # Yield (provider_name, model_name, api_key, features)
         ...
 ```

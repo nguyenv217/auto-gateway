@@ -256,6 +256,7 @@ class AdaptiveStrategy(BaseStrategy):
         models: list[str] | None,
         shuffle: bool,
         alias: str | None = None,
+        strict_alias: bool = True,
         message_hash: str | None = None,
         is_new_session: bool = False,
     ) -> Iterator[tuple[str, str, str | None, list[str]]]:
@@ -264,7 +265,7 @@ class AdaptiveStrategy(BaseStrategy):
         with self._lock:
             if is_new_session:
                 self._on_new_session()
-            candidates = self._build_candidates(provider, models, error_container, message_hash, alias=alias)
+            candidates = self._build_candidates(provider, models, error_container, message_hash, alias=alias, strict_alias=strict_alias)
 
         if not candidates:
             return iter([])
@@ -278,7 +279,7 @@ class AdaptiveStrategy(BaseStrategy):
         for c in weighted_candidates:
             yield c["pname"], c["model"], c["key"], c["features"]
 
-    def _build_candidates(self, provider, models, error_container, message_hash: str | None = None, alias: str | None = None):
+    def _build_candidates(self, provider, models, error_container, message_hash: str | None = None, alias: str | None = None, strict_alias: bool = True):
         candidates = []
 
         has_cloudflare = [m in self.all_models.get("cloudflare", {}) for m in models] if models else []
@@ -305,12 +306,22 @@ class AdaptiveStrategy(BaseStrategy):
                 if models and not self.models_match(models, mname):
                     continue
 
-                keys = prov.get_keys_for_alias(alias)
-                # If alias was specified and returned empty, skip this provider
-                if alias is not None and not keys:
-                    continue
-                if not keys:
-                    keys = [None]
+                all_keys = prov.get_keys()
+                if alias is None or not all_keys:
+                    resolved_keys = all_keys if all_keys else [None]
+                else:
+                    alias_key = prov.get_keys_for_alias(alias)
+                    if alias_key:
+                        if strict_alias:
+                            resolved_keys = alias_key
+                        else:
+                            resolved_keys = alias_key + [k for k in all_keys if k not in alias_key]
+                    else:
+                        if strict_alias:
+                            continue
+                        else:
+                            resolved_keys = all_keys
+                keys = resolved_keys
 
                 for key in keys:
                     key_hash = self._hash_key(pname, mname, key)
