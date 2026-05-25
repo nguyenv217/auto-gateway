@@ -124,7 +124,7 @@ def start(
     if config is None:
         try:
             cfg = load_global_config(name)
-            logger.info("Loaded global config from ~/.auto-gateway/config.json")
+            logger.info(f"Loaded global config from ~/.auto-gateway/config.{name + '.' if name else ''}json")
         except FileNotFoundError as e:
             typer.echo(f"Error: {e}", err=True)
             raise typer.Exit(code=1)
@@ -204,7 +204,7 @@ def save_global(
 ):
     """Save the specified config as the global default config."""
     save_global_config(config, alias)
-    typer.echo(f"Global config saved to ~/.auto-gateway/config.json")
+    typer.echo(f"Global config saved to ~/.auto-gateway/config.{alias + '.' if alias else ''}json")
 
 
 @app.command()

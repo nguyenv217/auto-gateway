@@ -21,7 +21,6 @@ class ChatCompletionRequest(BaseModel):
     provider: Optional[str] = None
     alias: Optional[str] = None
     strict_alias: bool = True
-
     model_config = ConfigDict(extra="allow")
 
 

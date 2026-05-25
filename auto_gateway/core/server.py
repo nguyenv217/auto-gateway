@@ -77,8 +77,8 @@ def create_app(*, router: ProviderRouter, strategy, model_name_default: str = "g
         # Extract extra fields like max_tokens, top_p, etc. dynamically
         payload_dict = payload.model_dump(exclude_unset=True)
         extra_body = {
-            k: v for k, v in payload_dict.items() 
-            if k not in {"model", "messages", "tools", "tool_choice", "stream", "provider", "alias"}
+            k: v for k, v in payload_dict.items()
+            if k not in {"model", "messages", "tools", "tool_choice", "stream", "provider", "alias", "strict_alias"}
         }
 
         raw_model = payload.model.strip() if payload.model else None

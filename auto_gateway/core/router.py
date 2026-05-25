@@ -19,7 +19,6 @@ from .exceptions import classify_exception, AllProvidersExhaustedError
 class RouteRequest:
     strategy: BaseStrategy
     provider: str | None
-    alias: str | None
     models: list[str] | None
     timeout: float
     shuffle: bool
@@ -28,6 +27,7 @@ class RouteRequest:
     extra_body: dict[str, Any]
     messages: list[dict[str, Any]]
     context_id: str | None = None
+    alias: str | None = None
     strict_alias: bool = True
 
 
@@ -69,7 +69,7 @@ class ProviderRouter:
                     extra_body=req.extra_body,
                 )
                 latency_ms = (time.perf_counter() - t0) * 1000
-                logger.info(f"Provider '{pname}' succeeded in {latency_ms:.2f}ms.")
+                logger.info(f"Provider '{pname}' ({key[-5:]}...) succeeded in {latency_ms:.2f}ms.")
                 req.strategy.record_success(key, model, pname)
                 req.strategy.record_latency(key, pname, model, latency_ms)
                 # Preserve tool-calls-only responses by ensuring we always
@@ -112,7 +112,7 @@ class ProviderRouter:
                     error_msg = f"{e} - Response Body: {error_body}"
 
 
-                logger.warning(f"Provider '{pname}' failed with {error_type.value}: {error_msg}")
+                logger.warning(f"Provider '{pname}' ({key[-5:]}...) failed with {error_type.value}: {error_msg}")
 
                 req.strategy.record_failure(
                     key, 

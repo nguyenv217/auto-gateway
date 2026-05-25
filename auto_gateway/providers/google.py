@@ -16,7 +16,6 @@ class GoogleProvider(BaseProvider):
     - `call_stream()` is implemented as a best-effort streaming wrapper around
       non-streaming generation until proper async streaming is available.
     """
-
     def __init__(
         self,
         name: str = "google",
@@ -39,7 +38,7 @@ class GoogleProvider(BaseProvider):
         tool_choice: Any,
         extra_body: dict[str, Any] | None = None,
     ) -> ProviderCallResult:
-        del tools, tool_choice, extra_body
+        del extra_body  # Drop extra_body for now as we don't map it, but KEEP tools and tool_choice
         if not key:
             raise ValueError("GoogleProvider requires an api key")
 
@@ -129,6 +128,43 @@ class GoogleProvider(BaseProvider):
                     ),
                 ],
             }
+
+            # Map OpenAI tools to Gemini Tools
+            if tools:
+                gemini_tools = []
+                for t in tools:
+                    if t.get("type") == "function":
+                        fn = t.get("function", {})
+                        gemini_tools.append(
+                            types.Tool(
+                                function_declarations=[
+                                    types.FunctionDeclaration(
+                                        name=fn.get("name"),
+                                        description=fn.get("description", ""),
+                                        parameters=fn.get("parameters")
+                                    )
+                                ]
+                            )
+                        )
+                if gemini_tools:
+                    config_kwargs["tools"] = gemini_tools
+
+            # Map OpenAI tool_choice to Gemini ToolConfig
+            if tool_choice:
+                fc_config = None
+                if isinstance(tool_choice, str):
+                    if tool_choice == "none":
+                        fc_config = types.FunctionCallingConfig(mode="NONE")
+                    elif tool_choice in ("auto", "required"):
+                        fc_config = types.FunctionCallingConfig(mode="AUTO" if tool_choice == "auto" else "ANY")
+                elif isinstance(tool_choice, dict) and tool_choice.get("type") == "function":
+                    fc_config = types.FunctionCallingConfig(
+                        mode="ANY",
+                        allowed_function_names=[tool_choice["function"]["name"]]
+                    )
+                
+                if fc_config:
+                    config_kwargs["tool_config"] = types.ToolConfig(function_calling_config=fc_config)
 
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", UserWarning)

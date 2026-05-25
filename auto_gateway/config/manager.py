@@ -36,8 +36,8 @@ def load_global_config(alias: str | None = None) -> GatewayConfig:
 
     if not config_path.exists():
         raise FileNotFoundError(
-            f"Global config not found at {GLOBAL_CONFIG_PATH}. "
+            f"Global config not found at {config_path}. "
             f"Run 'auto-gateway save_global --config <path>' first."
         )
-    data = json.loads(GLOBAL_CONFIG_PATH.read_text(encoding="utf-8"))
+    data = json.loads(config_path.read_text(encoding="utf-8"))
     return GatewayConfig.model_validate(data)
